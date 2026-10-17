@@ -1,0 +1,78 @@
+{
+  "name": "jarvis",
+  "productName": "Jarvis",
+  "version": "0.1.0",
+  "description": "Jarvis: a voice-first AI assistant for Windows. Talk to it, ask it things, let it read your notifications. Moved out of Spidey Sense.",
+  "main": "main.js",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dist": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dist-local.ps1",
+    "test:unit": "node scripts/jarvis-test.js && node scripts/notifications-test.js && node scripts/autostart-test.js && node scripts/updater-test.js && node scripts/speech-test.js && node scripts/reader-test.js && node scripts/brain-prompt-test.js && node scripts/brain-test.js && node scripts/voice-core-test.js && node scripts/stt-test.js && node scripts/wake-test.js"
+  },
+  "devDependencies": {
+    "electron": "44.7.2",
+    "electron-builder": "^26.15.3"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
+  },
+  "build": {
+    "appId": "dev.jarvis.assistant",
+    "productName": "Jarvis",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "preload-brain.js",
+      "brain.js",
+      "brain-prompt.js",
+      "karen-llm.js",
+      "speech.js",
+      "stt.js",
+      "wake.js",
+      "notifications.js",
+      "autostart.js",
+      "updater.js",
+      "renderer/**/*",
+      "assets/icon.png",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "assets/icon.png",
+        "to": "icon.png"
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "assets/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Jarvis",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "Jarvis-Setup-${version}.exe",
+      "include": "build/installer.nsh",
+      "allowElevation": false
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "DhruvHarani1",
+        "repo": "jarvis",
+        "releaseType": "release"
+      }
+    ]
+  }
+}

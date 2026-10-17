@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; script-src 'self'; img-src data:" />
+    <title>Jarvis — AI brain</title>
+    <link rel="stylesheet" href="brain.css" />
+  </head>
+  <body>
+    <header class="hero">
+      <h1>AI <em>BRAIN</em></h1>
+      <p>Jarvis tries your keys in order. If one hits its limit or fails he moves to the next. After three failed tries he switches to the local model on your PC, and finally to the built-in rules.</p>
+      <div class="chain" aria-label="Fallback order"><span>KEY 1</span>→<span>KEY 2</span>→<span>KEY 3</span>→<span class="local">LOCAL OLLAMA</span>→<span class="rules">BUILT-IN RULES</span></div>
+    </header>
+
+    <main>
+      <div id="warn" class="warn" hidden></div>
+
+      <section class="card">
+        <label class="toggle"><input type="checkbox" id="natural" /> <b>Natural conversation</b> <span>— anything that is not a known command goes to the brain, so you can just talk to Jarvis.</span></label>
+      </section>
+
+      <section>
+        <h2>Your keys <small id="count"></small></h2>
+        <div id="keys"></div>
+        <p id="nokeys" class="muted" hidden>No keys yet. Add one below — a free key takes about a minute to get.</p>
+      </section>
+
+      <section class="card">
+        <h2>Add a key</h2>
+        <div class="grid">
+          <label>Provider
+            <select id="provider"></select>
+          </label>
+          <label>Label <small>(optional)</small>
+            <input id="label" type="text" maxlength="40" placeholder="e.g. my NVIDIA key" />
+          </label>
+          <label class="wide">API key
+            <input id="key" type="password" autocomplete="off" spellcheck="false" placeholder="paste it here" />
+          </label>
+          <label class="wide" id="urlRow" hidden>Base URL <small>(https://…/v1)</small>
+            <input id="baseUrl" type="text" spellcheck="false" placeholder="https://api.example.com/v1" />
+          </label>
+          <label class="wide">Model <small>(optional — leave empty to pick automatically)</small>
+            <input id="model" type="text" spellcheck="false" placeholder="auto" />
+          </label>
+        </div>
+        <p id="hint" class="muted"></p>
+        <p><button id="get" class="link">Get a free key ↗</button> <button id="add" class="primary">Add key</button> <span id="addmsg" role="status"></span></p>
+        <p class="muted">Keys are encrypted with Windows (DPAPI) and stay on this PC. Jarvis sends only what you say to him plus one short status line (the time and your unread count). Never your notifications.</p>
+      </section>
+
+      <section class="card" id="local">
+        <h2>Local model (last resort)</h2>
+        <p id="ollama" class="muted"></p>
+        <p class="muted">Free and private, but it uses your RAM and CPU. Install <button class="link" data-url="https://ollama.com/">Ollama ↗</button> and run <code>ollama pull qwen2.5:1.5b</code> (about 1 GB).</p>
+      </section>
+
+      <section class="card">
+        <h2>Last answer</h2>
+        <p id="chain" class="muted">Nothing asked yet.</p>
+      </section>
+    </main>
+    <script src="brain.js"></script>
+  </body>
+</html>

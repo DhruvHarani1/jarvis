@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self'; connect-src 'none'" />
+    <title>Jarvis</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body data-listening="0" data-voice="idle" data-wake="0" data-unread="0">
+    <header class="top">
+      <span class="reactor" aria-hidden="true"></span>
+      <b class="title">JARVIS</b>
+      <span class="grow"></span>
+      <button class="ib mail" id="inboxbtn" title="Notification inbox" aria-label="Notification inbox">✉<b id="icount" hidden>0</b></button>
+      <button class="ib" id="brainbtn" title="AI brain: API keys" aria-label="AI brain settings">🧠</button>
+      <button class="ib" id="menubtn" title="Menu" aria-label="Menu">⋯</button>
+      <button class="ib" id="hidebtn" title="Hide to tray" aria-label="Hide">–</button>
+    </header>
+    <main>
+      <ol class="log" id="log" aria-live="polite"></ol>
+      <p class="caption" id="caption" role="status" aria-live="polite">Press Ctrl+Alt+Space and talk, or type below.</p>
+      <div class="row">
+        <button id="micbtn" class="mic" title="Talk to Jarvis (Ctrl+Alt+Space)" aria-label="Talk to Jarvis">🎤</button>
+        <input id="input" type="text" maxlength="400" placeholder="Ask Jarvis anything…" autocomplete="off" spellcheck="false" aria-label="Ask Jarvis" />
+      </div>
+      <div class="slog" id="slog" hidden></div>
+      <aside class="inbox" id="inbox" hidden aria-label="Notification inbox">
+        <header><b>INBOX</b><button id="iclear">CLEAR</button><button id="iclose" aria-label="Close inbox">✕</button></header>
+        <ul id="iitems"></ul>
+      </aside>
+    </main>
+    <script src="voice-core.js"></script>
+    <script src="jarvis.js"></script>
+    <script src="voice.js"></script>
+    <script src="inbox.js"></script>
+    <script src="reader.js"></script>
+  </body>
+</html>

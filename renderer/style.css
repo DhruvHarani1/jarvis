@@ -37,3 +37,14 @@ body[data-wake='1'] .reactor::after { content: '👂'; position: absolute; left:
 .inbox li .t, .inbox li .d { display: block; }
 .inbox li .d { color: #8fb6d6; font-size: 12px; }
 .inbox li.empty { text-align: center; color: #5b8db5; cursor: default; }
+
+.confirm { position: absolute; left: 10px; right: 10px; bottom: 10px; z-index: 9; padding: 12px; border: 1px solid #38c8ff; border-radius: 10px; background: #08142bf8; box-shadow: 0 0 18px #19a8ff66; }
+.confirm[hidden] { display: none; }
+.confirm b { color: #6fd4ff; letter-spacing: 1px; }
+.confirm pre { margin: 8px 0; padding: 8px; max-height: 120px; overflow: auto; white-space: pre-wrap; word-break: break-all; background: #050b1a; border: 1px solid #12335e; border-radius: 6px; color: #e8f6ff; font: 12px/1.4 Consolas, monospace; user-select: text; }
+.confirm p { margin: 0 0 8px; color: #7fb4de; font-size: 12px; }
+.cbtns { display: flex; gap: 8px; justify-content: flex-end; }
+.cbtns button { padding: 6px 16px; border-radius: 6px; border: 1px solid #1b4d80; background: #08142b; color: #9fd8ff; cursor: pointer; letter-spacing: 1px; }
+#cyes { background: #0b3a66; border-color: #38c8ff; color: #fff; }
+#cyes:hover { background: #19a8ff; }
+.confirm[data-tier='T3'] { border-color: #ff3b5c; }

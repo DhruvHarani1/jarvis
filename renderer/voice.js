@@ -231,6 +231,13 @@
   })
   setState('idle')
 
-  window.Voice = { toggle, start, cancel, get listening() { return !!session } }
+  /** the next time he stops speaking, listen again (used when he has just asked you a yes/no question) */
+  function armFollowUp() {
+    followUp = true
+    clearTimeout(followTimer)
+    followTimer = setTimeout(() => (followUp = false), 30000)
+  }
+
+  window.Voice = { toggle, start, cancel, armFollowUp, get listening() { return !!session } }
   if (window.Core.test) window.__voice = { diag, toggle, start, cancel, get session() { return session }, get busy() { return busy } }
 })()

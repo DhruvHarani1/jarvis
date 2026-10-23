@@ -24,6 +24,12 @@
         <input id="input" type="text" maxlength="400" placeholder="Ask Jarvis anything…" autocomplete="off" spellcheck="false" aria-label="Ask Jarvis" />
       </div>
       <div class="slog" id="slog" hidden></div>
+      <aside class="confirm" id="confirm" hidden role="alertdialog" aria-labelledby="ctitle" aria-describedby="cdetail">
+        <b id="ctitle"></b>
+        <pre id="cdetail"></pre>
+        <p id="chint"></p>
+        <div class="cbtns"><button id="cno">DENY</button><button id="cyes">ALLOW</button></div>
+      </aside>
       <aside class="inbox" id="inbox" hidden aria-label="Notification inbox">
         <header><b>INBOX</b><button id="iclear">CLEAR</button><button id="iclose" aria-label="Close inbox">✕</button></header>
         <ul id="iitems"></ul>
@@ -34,6 +40,7 @@
     <script src="tts-player.js"></script>
     <script src="wake-tap.js"></script>
     <script src="voice.js"></script>
+    <script src="confirm.js"></script>
     <script src="inbox.js"></script>
     <script src="reader.js"></script>
   </body>

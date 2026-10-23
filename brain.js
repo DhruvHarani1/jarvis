@@ -125,6 +125,15 @@ function extractText(json) {
   return ''
 }
 
+/** OpenAI-style reply -> [{id,name,arguments}] (arguments stay the JSON text the model wrote) */
+function extractToolCalls(json) {
+  const calls = json?.choices?.[0]?.message?.tool_calls
+  if (!Array.isArray(calls)) return []
+  return calls
+    .filter((c) => c && c.function && typeof c.function.name === 'string')
+    .map((c, i) => ({ id: String(c.id || 'call_' + (i + 1)), name: c.function.name, arguments: typeof c.function.arguments === 'string' ? c.function.arguments : JSON.stringify(c.function.arguments || {}) }))
+}
+
 // ------------------------------------------------------------------ the brain
 /**
  * @param {{ file:string, fetch:typeof fetch, now?:()=>number, crypt:{available:()=>boolean, enc:(s:string)=>string, dec:(s:string)=>string}, ollama?:{status:()=>Promise<{available:boolean, model:string}>} }} deps
@@ -314,14 +323,16 @@ function createBrain(deps) {
       try {
         const j = JSON.parse(await res.text())
         const text = extractText(j)
+        const toolCalls = extractToolCalls(j)
         done()
-        if (!text) return { ok: false, kind: 'server', message: 'empty answer' }
-        try {
-          onDelta(text)
-        } catch {
-          /* listener bug */
-        }
-        return { ok: true, text }
+        if (!text && !toolCalls.length) return { ok: false, kind: 'server', message: 'empty answer' }
+        if (text)
+          try {
+            onDelta(text)
+          } catch {
+            /* listener bug */
+          }
+        return { ok: true, text, toolCalls }
       } catch (err) {
         done()
         return { ok: false, ...classify(0, null, '', err) }
@@ -330,6 +341,7 @@ function createBrain(deps) {
     let full = ''
     let buf = ''
     let got = false
+    const frag = new Map() // streamed tool calls arrive in pieces, keyed by index
     try {
       const reader = res.body.getReader()
       const dec = new TextDecoder()
@@ -350,6 +362,18 @@ function createBrain(deps) {
           } catch {
             continue
           }
+          for (const tc of j?.choices?.[0]?.delta?.tool_calls || []) {
+            const i = Number.isInteger(tc.index) ? tc.index : 0
+            const cur = frag.get(i) || { id: '', name: '', arguments: '' }
+            if (tc.id) cur.id = tc.id
+            if (tc.function?.name) cur.name += tc.function.name
+            if (typeof tc.function?.arguments === 'string') cur.arguments += tc.function.arguments
+            frag.set(i, cur)
+            if (!got) {
+              got = true
+              clearTimeout(firstTokenWatchdog)
+            }
+          }
           const piece = j?.choices?.[0]?.delta?.content
           if (typeof piece === 'string' && piece) {
             if (!got) {
@@ -367,11 +391,12 @@ function createBrain(deps) {
       }
     } catch (err) {
       done()
-      if (got) return { ok: true, text: full, partial: true }
+      if (got) return { ok: true, text: full, partial: true, toolCalls: [] } // a half-written tool call is never run
       return { ok: false, ...classify(0, null, '', err) }
     }
     done()
-    return full ? { ok: true, text: full } : { ok: false, kind: 'server', message: 'empty answer' }
+    const toolCalls = [...frag.entries()].sort((a, b) => a[0] - b[0]).map(([, c], n) => ({ id: c.id || 'call_' + (n + 1), name: c.name, arguments: c.arguments || '{}' })).filter((c) => c.name)
+    return full || toolCalls.length ? { ok: true, text: full, toolCalls } : { ok: false, kind: 'server', message: 'empty answer' }
   }
 
   /** ids of the chat models this key can see, best candidates first */
@@ -404,7 +429,7 @@ function createBrain(deps) {
     return { list: s.model ? [s.model, ...s.cands.filter((m) => m !== s.model)] : s.cands }
   }
 
-  async function callOnline(e, messages, onDelta) {
+  async function callOnline(e, messages, onDelta, tools) {
     const key = keyOf(e)
     if (!key) return { ok: false, kind: 'auth', message: 'the saved key could not be decrypted — enter it again' }
     const s = state(e.id)
@@ -422,13 +447,16 @@ function createBrain(deps) {
       if (s.badModels.has(model)) continue
       if (tried >= MAX_MODEL_TRIES) break
       tried++
-      const init = { method: 'POST', headers, body: JSON.stringify({ model, messages, temperature: 0.65, max_tokens: 280, stream: !!onDelta }) }
+      const body = { model, messages, temperature: 0.65, max_tokens: tools ? 420 : 280, stream: !!onDelta }
+      if (tools) Object.assign(body, { tools, tool_choice: 'auto' })
+      const init = { method: 'POST', headers, body: JSON.stringify(body) }
       const r = onDelta ? await requestStream(`${base}/chat/completions`, init, onDelta, ONLINE_STREAM_MS) : await request(`${base}/chat/completions`, init, ONLINE_TIMEOUT_MS)
       if (r.ok) {
         const text = (r.text !== undefined ? r.text : extractText(r.json)).trim()
-        if (!text) return { ok: false, kind: 'server', message: 'empty answer' }
+        const toolCalls = r.toolCalls !== undefined ? r.toolCalls : extractToolCalls(r.json)
+        if (!text && !toolCalls.length) return { ok: false, kind: 'server', message: 'empty answer' }
         s.model = model
-        return { ok: true, text, model }
+        return { ok: true, text, toolCalls, model }
       }
       if (r.kind === 'model') {
         // "not found for this account" and friends: that model is not switched on for this key, try the next one
@@ -447,15 +475,18 @@ function createBrain(deps) {
     }
   }
 
-  async function callLocal(messages, onDelta) {
+  async function callLocal(messages, onDelta, tools) {
     if (!deps.ollama) return { ok: false, kind: 'network', message: 'local model unavailable' }
     const st = await deps.ollama.status().catch(() => ({ available: false }))
     if (!st.available) return { ok: false, kind: 'network', message: 'Ollama is not running or has no model' }
-    const init = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: st.model, messages, temperature: 0.65, max_tokens: 220, stream: !!onDelta }) }
+    const lbody = { model: st.model, messages, temperature: 0.65, max_tokens: tools ? 420 : 220, stream: !!onDelta }
+    if (tools) Object.assign(lbody, { tools })
+    const init = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(lbody) }
     const r = onDelta ? await requestStream(`${OLLAMA_BASE}/chat/completions`, init, onDelta, LOCAL_TIMEOUT_MS) : await request(`${OLLAMA_BASE}/chat/completions`, init, LOCAL_TIMEOUT_MS)
     if (!r.ok) return r
     const text = (r.text !== undefined ? r.text : extractText(r.json)).trim()
-    return text ? { ok: true, text, model: st.model } : { ok: false, kind: 'server', message: 'empty answer' }
+    const toolCalls = r.toolCalls !== undefined ? r.toolCalls : extractToolCalls(r.json)
+    return text || toolCalls.length ? { ok: true, text, toolCalls, model: st.model } : { ok: false, kind: 'server', message: 'empty answer' }
   }
 
   function penalise(e, r) {
@@ -476,29 +507,30 @@ function createBrain(deps) {
    * @param {{role:string,content:string}[]} messages
    * @returns {Promise<{ok:boolean, text?:string, via?:string, chain:string[], error?:string}>}
    */
-  async function chat(messages, onDelta) {
+  async function chat(messages, onDelta, opts = {}) {
+    const tools = opts.tools && opts.tools.length ? opts.tools : undefined
     const chain = []
     const usable = store.entries.filter((e) => e.enabled !== false && !state(e.id).bad && state(e.id).until <= now())
     let tries = 0
     for (const e of usable) {
       if (tries >= MAX_ONLINE_TRIES) break
       tries++
-      const r = await callOnline(e, messages, onDelta)
+      const r = await callOnline(e, messages, onDelta, tools)
       if (r.ok) {
         const s = state(e.id)
         Object.assign(s, { fails: 0, until: 0, bad: false, lastError: '', lastOk: now() })
         chain.push(`${e.label}: ok`)
         lastChain = chain
-        return { ok: true, text: r.text, via: `${e.label} (${r.model})`, chain }
+        return { ok: true, text: r.text, toolCalls: r.toolCalls || [], via: `${e.label} (${r.model})`, chain }
       }
       penalise(e, r)
       chain.push(`${e.label}: ${r.message}`)
     }
-    const local = await callLocal(messages, onDelta)
+    const local = await callLocal(messages, onDelta, tools)
     if (local.ok) {
       chain.push('local Ollama: ok')
       lastChain = chain
-      return { ok: true, text: local.text, via: `local Ollama (${local.model})`, chain }
+      return { ok: true, text: local.text, toolCalls: local.toolCalls || [], via: `local Ollama (${local.model})`, chain }
     }
     chain.push(`local Ollama: ${local.message}`)
     lastChain = chain

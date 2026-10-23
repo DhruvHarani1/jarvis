@@ -1,5 +1,5 @@
 'use strict'
-const { app, BrowserWindow, dialog, utilityProcess, safeStorage, session, shell, globalShortcut, Menu, Notification, Tray, ipcMain, nativeImage, screen } = require('electron')
+const { app, BrowserWindow, clipboard, dialog, utilityProcess, safeStorage, session, shell, globalShortcut, Menu, Notification, Tray, ipcMain, nativeImage, screen } = require('electron')
 const fs = require('node:fs')
 const path = require('node:path')
 const autostart = require('./autostart')
@@ -8,6 +8,8 @@ const audioModels = require('./audio/models')
 const audioClient = require('./audio/client')
 const pcm = require('./audio/pcm')
 const voiceOut = require('./voice-out')
+const appTools = require('./app-tools')
+const fastpath = require('./fastpath')
 const stt = require('./stt')
 const wakeWord = require('./wake')
 const { createBrain, PRESETS: BRAIN_PRESETS } = require('./brain')
@@ -27,6 +29,9 @@ const DEFAULTS = {
   jarvisSpeaks: true, // replies are spoken aloud (voice turns are always spoken)
   voiceConverse: false, // after he answers a spoken question, listen again for a follow-up
   wakeWord: false, // "Hey Jarvis": always listening for the wake phrase, fully offline
+  actions: true, // Jarvis may act on the PC through his tools (every action is checked, confirmed when risky, and logged)
+  disabledTools: [], // tools the user switched off
+  powerMode: false, // reserved: arbitrary-command tools (none exist yet)
   neuralVoice: true, // use the natural on-PC voice when its model is installed (else the Windows voice)
   sttMode: 'auto', // 'auto' = Groq Whisper if you have a Groq key, else Windows | 'offline' = Windows only
   voiceName: '', // '' = automatic; otherwise the exact installed Windows voice name
@@ -256,6 +261,19 @@ function menuTemplate() {
       ]
     },
     check('Natural voice (on this PC)', 'neuralVoice'),
+    { type: 'separator' },
+    check('Jarvis can act on this PC (tools)', 'actions'),
+    { label: 'Undo last action', click: () => void tools?.runtime.undo().then((r) => speech.speak(r.ok ? r.spoken : r.error, { queue: true })) },
+    { label: 'Activity log…', click: () => void shell.openPath(tools ? tools.audit.file : '') },
+    {
+      label: 'Tools',
+      submenu: (tools ? tools.toolList() : []).map((t) => ({
+        label: `${t.name.replace(/_/g, ' ')}  (${t.tier})`,
+        type: 'checkbox',
+        checked: !(settings.disabledTools || []).includes(t.name),
+        click: (i) => update({ disabledTools: i.checked ? settings.disabledTools.filter((n) => n !== t.name) : [...new Set([...(settings.disabledTools || []), t.name])] })
+      }))
+    },
     { label: 'Download voice models…', click: () => void offerModels(['stt', 'voice']) },
     { type: 'separator' },
     check('Notification inbox', 'inbox'),
@@ -306,6 +324,71 @@ ipcMain.on('settings:patch', (e, patch) => {
 })
 ipcMain.handle('settings:get', () => publicSettings())
 
+// ---------------------------------------------------------------- Jarvis's hands: tools, confirmation, activity log
+/** @type {ReturnType<typeof appTools.create> | null} */
+let tools = null
+let conversationTainted = false // untrusted text has been read in this conversation: risky actions then need a click
+const confirmWaiting = new Map()
+let confirmSeq = 0
+
+/** ask the person (on screen, and aloud when a spoken yes is allowed). Resolves false on no, on timeout, or if nobody can answer. */
+function askConfirm(req) {
+  return new Promise((resolve) => {
+    if (!win) return resolve(false)
+    const id = ++confirmSeq
+    const timer = setTimeout(() => {
+      confirmWaiting.delete(id)
+      win?.webContents.send('confirm:close', id)
+      resolve(false)
+    }, 90_000)
+    confirmWaiting.set(id, (yes) => {
+      clearTimeout(timer)
+      confirmWaiting.delete(id)
+      resolve(!!yes)
+    })
+    showWindow()
+    win.webContents.send('confirm:ask', { id, title: req.title, detail: req.detail, tier: req.tier, requireClick: !!req.requireClick })
+    const q = req.requireClick ? `${req.title}. Please confirm on screen.` : `${req.title}. Say yes or no, or use the buttons.`
+    void speech.speak(q, { queue: true })
+  })
+}
+ipcMain.on('confirm:answer', (e, id, yes) => {
+  if (e.sender !== win?.webContents) return
+  const done = confirmWaiting.get(id)
+  if (done) done(yes === true)
+})
+
+function initTools() {
+  tools = appTools.create({
+    electron: { app, shell, clipboard },
+    userData: app.getPath('userData'),
+    brain: () => brain,
+    settings: () => settings,
+    confirm: askConfirm,
+    ps: process.env.SPIDEY_TEST && process.env.JARVIS_TEST_PS_LOG ? require('./tools/fake-ps').create({ logFile: process.env.JARVIS_TEST_PS_LOG }).ps : undefined,
+    onReminder: (r) => {
+      void speech.speak(r.late ? `You missed this reminder: ${r.text}` : r.text, { queue: true, urgent: !r.late, tag: r.text })
+      if (Notification.isSupported() && !process.env.SPIDEY_TEST) new Notification({ title: 'Jarvis reminder', body: r.text, silent: true }).show()
+    }
+  })
+}
+
+/** everyday commands that need no language model; resolves {handled, say} */
+ipcMain.handle('fast:try', async (e, text) => {
+  if (e.sender !== win?.webContents || !tools || settings.actions === false || typeof text !== 'string') return { handled: false }
+  const f = fastpath.parse(text)
+  if (!f) return { handled: false }
+  if (f.kind === 'say') return { handled: true, say: f.text }
+  if (f.kind === 'undo') {
+    const r = await tools.runtime.undo()
+    return { handled: true, say: r.ok ? r.spoken : r.error }
+  }
+  const r = await tools.runtime.call(f.name, f.args, { source: 'fastpath', tainted: conversationTainted })
+  if (r.untrusted) conversationTainted = true
+  return { handled: true, ok: r.ok, say: r.ok ? r.spoken || 'Done.' : r.declined ? 'Okay, I will not do that.' : `I could not do that: ${r.error}.` }
+})
+ipcMain.handle('tools:list', (e) => (e.sender === win?.webContents && tools ? tools.toolList() : []))
+
 // ---------------------------------------------------------------- AI brain (multi-key failover → local Ollama)
 /** @type {ReturnType<typeof createBrain> | null} */
 let brain = null
@@ -337,8 +420,8 @@ ipcMain.handle('brain:ready', async (e) => {
 ipcMain.handle('brain:chat', async (e, text, ctx, opts) => {
   if (e.sender !== win?.webContents || !brain || typeof text !== 'string' || !text.trim()) return { ok: false, error: 'not available' }
   const speak = !!(opts && opts.speak === true)
-  // Jarvis cannot act on the PC yet (Phase 1): conversation only
-  const messages = brainPrompt.buildMessages(brainHistory, text, { name: settings.callMe, ctx: { now: new Date(), unread: Number.isFinite(ctx && ctx.unread) ? ctx.unread : undefined }, actions: false })
+  const useTools = !!tools && settings.actions !== false
+  const messages = brainPrompt.buildMessages(brainHistory, text, { name: settings.callMe, ctx: { now: new Date(), unread: Number.isFinite(ctx && ctx.unread) ? ctx.unread : undefined }, actions: useTools })
   if (speak) speech.stop() // never talk over himself, or over you
   let said = ''
   const rs = brainPrompt.createReplyStream({
@@ -348,12 +431,24 @@ ipcMain.handle('brain:chat', async (e, text, ctx, opts) => {
       win?.webContents.send('brain:delta', said)
     }
   })
-  const r = await brain.chat(messages, (d) => rs.feed(d))
+  let r
+  let agentText = ''
+  if (useTools) {
+    const a = await tools.agent.run({ messages, onDelta: (d) => rs.feed(d), tainted: conversationTainted })
+    if (a.tainted) conversationTainted = true
+    r = a
+    agentText = a.text || ''
+  } else r = await brain.chat(messages, (d) => rs.feed(d))
   if (!r.ok) {
     brainReady = { at: 0, v: false }
     return { ok: false, error: r.error, chain: r.chain }
   }
   const fin = rs.end()
+  // the agent's last words win when the stream held none (for example a tool's own sentence)
+  if (!fin.say && agentText) {
+    fin.say = agentText
+    fin.streamed = false
+  }
   if (!fin.say) return { ok: false, error: 'it sent an empty answer' }
   if (speak && !fin.streamed && fin.say) void speech.speak(fin.say, { queue: true })
   brainHistory.push({ role: 'user', content: text.slice(0, 600) }, { role: 'assistant', content: fin.say })
@@ -361,7 +456,10 @@ ipcMain.handle('brain:chat', async (e, text, ctx, opts) => {
   return { ok: true, say: fin.say, via: r.via, spoken: speak }
 })
 ipcMain.on('brain:reset', (e) => {
-  if (e.sender === win?.webContents) brainHistory = []
+  if (e.sender === win?.webContents) {
+    brainHistory = []
+    conversationTainted = false
+  }
 })
 ipcMain.on('brain:open', (e) => {
   if (e.sender === win?.webContents) openBrain()
@@ -629,6 +727,7 @@ if (!app.requestSingleInstanceLock()) {
     speech.setVoice(settings.voiceName)
     audio.onCrash((code) => console.error('audio worker crashed, exit', code))
     initBrain()
+    initTools()
     const ours = (url) => typeof url === 'string' && url.startsWith('file://')
     const allowed = (permission, details) => permission === 'media' && (!details || !details.mediaTypes || details.mediaTypes.every((t) => t === 'audio'))
     session.defaultSession.setPermissionRequestHandler((wc, permission, cb, details) => cb(ours(wc.getURL()) && allowed(permission, details)))

@@ -1,0 +1,107 @@
+'use strict'
+/**
+ * The fast path: everyday commands that need no language model ("open Spotify", "volume 30", "set a timer for 5 minutes",
+ * "remind me in 20 minutes to stretch", "next song", "undo"). Answered locally, instantly, offline and for free.
+ * Anything it does not clearly recognise returns null and goes to the language model.
+ *
+ * Returns { kind: 'tool', name, args } | { kind: 'say', text } | { kind: 'undo' } | null. Tools still go through the
+ * tool runtime, so tiers, confirmation and the activity log apply exactly as for the model.
+ */
+
+const ONES = { zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19 }
+const TENS = { twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90 }
+const WEB = { youtube: 'https://www.youtube.com/', gmail: 'https://mail.google.com/', google: 'https://www.google.com/', 'google maps': 'https://maps.google.com/', maps: 'https://maps.google.com/', whatsapp: null, github: 'https://github.com/', chatgpt: 'https://chatgpt.com/' }
+
+/** "twenty five" / "25" / "a" / "an" / "half an" -> number, or null */
+function num(s) {
+  const t = String(s || '').trim().toLowerCase().replace(/-/g, ' ')
+  if (/^\d+(\.\d+)?$/.test(t)) return Number(t)
+  if (t === 'a' || t === 'an' || t === 'one') return 1
+  if (t === 'half an' || t === 'half a' || t === 'half') return 0.5
+  if (t === 'a half' || t === 'one and a half') return 1.5
+  const parts = t.split(/\s+/)
+  if (parts.length === 1 && t in ONES) return ONES[t]
+  if (parts.length === 1 && t in TENS) return TENS[t]
+  if (parts.length === 2 && parts[0] in TENS && parts[1] in ONES && ONES[parts[1]] > 0 && ONES[parts[1]] < 10) return TENS[parts[0]] + ONES[parts[1]]
+  return null
+}
+const UNIT = { second: 1 / 60, seconds: 1 / 60, sec: 1 / 60, secs: 1 / 60, minute: 1, minutes: 1, min: 1, mins: 1, hour: 60, hours: 60, hr: 60, hrs: 60 }
+const NUMRE = '(\\d+(?:\\.\\d+)?|(?:twenty|thirty|forty|fifty|sixty)[ -](?:one|two|three|four|five|six|seven|eight|nine)|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|an?|half an?|an? half|one and a half)'
+const UNITRE = '(seconds?|secs?|minutes?|mins?|hours?|hrs?)'
+
+function minutesOf(n, unit) {
+  const v = num(n)
+  const u = UNIT[String(unit).toLowerCase()]
+  if (v === null || !u) return null
+  return Math.round(v * u * 1000) / 1000
+}
+
+function clean(text) {
+  return String(text || '')
+    .toLowerCase()
+    .replace(/[?!.,"“”]/g, ' ')
+    .replace(/’/g, "'")
+    .replace(/\b(hey |ok |okay )?jarvis\b/g, ' ')
+    .replace(/\b(please|could you|can you|would you|will you|kindly|for me|now)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/** @param {string} raw @param {{now?:Date}} [o] */
+function parse(raw, o = {}) {
+  const t = clean(raw)
+  if (!t || t.split(' ').length > 14) return null
+  let m
+
+  if (/^(undo|undo that|undo it|take that back|revert that|put it back)$/.test(t)) return { kind: 'undo' }
+
+  if ((m = new RegExp(`^(?:set |start |make )?(?:a |an )?(?:timer|countdown)(?: for| of)? ${NUMRE} ?${UNITRE}$`).exec(t)) || (m = new RegExp(`^(?:set |start )?(?:a |an )?${NUMRE} ?${UNITRE} (?:timer|countdown)$`).exec(t))) {
+    const min = minutesOf(m[1], m[2])
+    if (min && min >= 0.1 && min <= 1440) return { kind: 'tool', name: 'set_timer', args: { minutes: min } }
+  }
+
+  // "remind me in 20 minutes to stretch" / "remind me to stretch in 20 minutes"
+  if ((m = new RegExp(`^remind me in ${NUMRE} ?${UNITRE} (?:to |that |about )?(.+)$`).exec(t))) {
+    const min = minutesOf(m[1], m[2])
+    if (min && min >= 0.1 && min <= 525600) return { kind: 'tool', name: 'add_reminder', args: { text: m[3], in_minutes: min } }
+  }
+  if ((m = new RegExp(`^remind me (?:to |that |about )(.+?) in ${NUMRE} ?${UNITRE}$`).exec(t))) {
+    const min = minutesOf(m[2], m[3])
+    if (min && min >= 0.1 && min <= 525600) return { kind: 'tool', name: 'add_reminder', args: { text: m[1], in_minutes: min } }
+  }
+
+  if (/^(what time is it|what's the time|what is the time|tell me the time|the time|time)$/.test(t)) {
+    const d = o.now || new Date()
+    return { kind: 'say', text: `It is ${d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}.` }
+  }
+  if (/^(what(?:'s| is) (?:the )?(?:date|day)(?: today)?|what day is it(?: today)?|today's date)$/.test(t)) {
+    const d = o.now || new Date()
+    return { kind: 'say', text: `It is ${d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}.` }
+  }
+
+  if ((m = new RegExp(`^(?:set )?(?:the )?(?:system )?volume(?: to| at)? ${NUMRE}(?: percent| %)?$`).exec(t)) || (m = new RegExp(`^(?:turn|set) (?:the )?(?:sound|volume) (?:to|at) ${NUMRE}(?: percent)?$`).exec(t))) {
+    const v = num(m[1])
+    if (v !== null && v >= 0 && v <= 100 && Number.isInteger(v)) return { kind: 'tool', name: 'set_volume', args: { level: v } }
+  }
+  if (/^(volume up|turn (?:it |the volume |the sound )?up|louder|increase (?:the )?volume)$/.test(t)) return { kind: 'tool', name: 'media_key', args: { action: 'volume_up', times: 5 } }
+  if (/^(volume down|turn (?:it |the volume |the sound )?down|quieter|lower (?:the )?volume|decrease (?:the )?volume)$/.test(t)) return { kind: 'tool', name: 'media_key', args: { action: 'volume_down', times: 5 } }
+  if (/^(mute|mute (?:the )?(?:sound|volume|pc|computer)|silence)$/.test(t)) return { kind: 'tool', name: 'mute', args: { muted: true } }
+  if (/^(unmute|unmute (?:the )?(?:sound|volume|pc|computer))$/.test(t)) return { kind: 'tool', name: 'mute', args: { muted: false } }
+
+  if (/^(pause|resume|play|pause (?:the )?(?:music|song|video|track|playback)|play (?:the )?(?:music|song|video|track)|resume (?:the )?(?:music|song|video|track|playback)|stop (?:the )?music)$/.test(t)) return { kind: 'tool', name: 'media_key', args: { action: 'play_pause' } }
+  if (/^(next|skip|next (?:song|track)|skip (?:this |the )?(?:song|track))$/.test(t)) return { kind: 'tool', name: 'media_key', args: { action: 'next' } }
+  if (/^(previous|go back|previous (?:song|track)|last (?:song|track))$/.test(t)) return { kind: 'tool', name: 'media_key', args: { action: 'previous' } }
+
+  if (/^(system status|how(?:'s| is) my (?:pc|computer|laptop|system)(?: doing)?|pc status|computer status|how(?:'s| is) the pc|battery|battery level|how much battery(?: do i have| is left)?|cpu usage)$/.test(t)) return { kind: 'tool', name: 'system_status', args: {} }
+  if (/^(what(?:'s| are) my reminders|list (?:my )?reminders|list (?:my )?timers|show (?:my )?reminders)$/.test(t)) return { kind: 'tool', name: 'list_reminders', args: {} }
+
+  if ((m = /^(?:open|launch|start|run) (?:the )?(.{2,40}?)(?: app| application)?$/.exec(t))) {
+    const what = m[1].trim()
+    if (/^(timer|a timer|the timer|focus|conversation|wake|listening|notifications)/.test(what)) return null
+    if (what in WEB && WEB[what]) return { kind: 'tool', name: 'open_url', args: { url: WEB[what] } }
+    return { kind: 'tool', name: 'open_app', args: { name: what } }
+  }
+  return null
+}
+
+module.exports = { parse, num, clean }

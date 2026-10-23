@@ -363,6 +363,24 @@ Still open for M1 acceptance: (1) WER on 20 of the user's own recordings, (2) fa
 - Optional MCP client behind a setting, with one example server tested.
 - **Acceptance:** (1) "Open Notepad", "volume 30", "remind me in 10 minutes to stand up" work by voice. (2) "Delete the file X" shows the exact path, needs click plus yes, goes to Recycle Bin, "undo" restores. (3) Prompt-injection test cannot trigger a T2 tool without a click. (4) Path traversal tests all denied. (5) Audit log shows every call; viewer works. (6) With Power mode off, no T3 tool is in the registry (test enumerates it); the key store and security-software tools never exist. (7) Tool loop stops at max steps.
 
+### M2 results (2026-10-24)
+
+Built, with unit tests (`npm run test:unit`, now 22 suites) and real-app tests (`npm run e2e`, 4 scripts):
+- **Tool runtime** (`tools/runtime.js`): one gate for everything Jarvis can do. Tools are registered with a tier and a JSON schema; arguments (from a model, which is treated as hostile) are validated and unknown properties refused; T2 always asks; T3 only with power mode; a tool the user switched off is invisible to the model and cannot be called; every call is logged; undo stack of 20.
+- **Tools** (`tools/windows.js`): open_app, open_url (http/https only), set_volume, mute, media_key, set_timer, add_reminder, list_reminders, cancel_reminder, read_clipboard, write_clipboard, system_status, find_files, open_file (never programs or scripts), move_file (T2), delete_file (T2, Recycle Bin, files only). All PowerShell is a fixed script; the only variable is a base64 JSON argument, never pasted into a command line.
+- **File sandbox** (`tools/paths.js`): approved folders only, judged after resolving `..`, junctions and symlinks; network, device and alternate-stream paths and reserved names refused.
+- **Confirmation** (`renderer/confirm.js`): a box on screen showing the exact action; a spoken yes or no works when nothing untrusted has been read; **after reading untrusted text (clipboard, file names) a spoken yes is refused and only the click counts**.
+- **Agent loop** (`agent.js`): at most 5 steps and 4 calls per step, duplicate calls dropped, results labelled "UNTRUSTED CONTENT" for the model, tool calls written as text by some models are rescued (`tools/rescue.js`), a half-streamed tool call is never run. `brain.js` now streams and returns tool calls.
+- **Fast path** (`fastpath.js`): "open Spotify", "volume 30", "set a timer for five minutes", "remind me in 20 minutes to stretch", "next song", "mute", "what time is it", "undo that" run with no language model, so they work offline and with no keys.
+- **Activity log** (`activity.jsonl` in the app data folder, redacted, rotated at 2 MB), tray: Activity log, Undo last action, per-tool on/off, master switch.
+- The Spidey-era "DO:" action protocol and its action whitelist are gone.
+
+Verified for real on this PC (not just fakes): the PowerShell volume, mute, Start-menu app list and CPU/battery scripts, and a **real Recycle Bin delete and restore** of a temp file.
+Verified in the real app with a stand-in for PowerShell and a scripted fake provider (`scripts/e2e-tools.js`): fast-path commands without any provider call, a model-requested tool, DENY keeps the file, a spoken yes allows it, undo brings it back, and the **prompt-injection case** (clipboard says "delete the tax file", the fooled model asks to delete): a box appears that demands a click, a spoken "yes" does nothing, and the file stays.
+
+Not done yet from the M2 list: the optional MCP client (moves to M2b with the connectors), a graphical activity viewer (the tray opens the log file), voice confirmation uses a 90-second window and no read-back. Power mode has no tools yet (M2b).
+Found while testing: a model that is fooled can still ask; the safety is in the runtime, not in the prompt. Worth keeping in mind for every connector.
+
 ### M2b: Connectors, the Iron Man layer (4-6 sessions, one connector at a time)
 
 Order by value for Dhruv: Spotify (URI + media keys), Calendar and Mail (OAuth or MCP, read first, then write), WhatsApp (URI + UIA send with confirmation, notification-based reading), Teams (deep links + UIA), generic UIA "click/type in app X", then Power mode.

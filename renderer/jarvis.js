@@ -110,6 +110,7 @@
     if (!text) return
     voiceTurn = !!opts.voice
     addLine('me', text)
+    if (window.Confirm && window.Confirm.tryVoice(text)) return // a spoken yes / no to a question he just asked
     try {
       const local = await command(text)
       if (local !== null) {
@@ -117,6 +118,13 @@
           addLine('jarvis', local)
           say(local, 8000, voiceTurn)
         }
+        return
+      }
+      // everyday commands (open an app, volume, timers, media keys, undo) need no language model
+      const fast = await window.jarvis.fastTry(text).catch(() => null)
+      if (fast && fast.handled) {
+        addLine('jarvis', fast.say)
+        say(fast.say, 8000, voiceTurn)
         return
       }
       const ok = await window.jarvis.brainReady().catch(() => false)

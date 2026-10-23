@@ -494,13 +494,39 @@ ipcMain.handle('voice:info', (e) => (e.sender === win?.webContents ? { cloud: !!
 let micOpen = false // the window has the microphone open for a question
 let speaking = false
 let wakeResume = null
-const wake = wakeWord.create({
+const onWakeState = (s, detail) => win?.webContents.send('wake:state', { state: s, detail: detail || '' })
+const onWoke = () => {
+  wake.pause() // he must not hear his own beep and answer
+  win?.webContents.send('voice:toggle')
+}
+const wakeLegacy = wakeWord.create({
   env: process.env.SPIDEY_TEST && process.env.SPIDEY_WAKE_WAV ? { SPIDEY_WAKE_WAV: process.env.SPIDEY_WAKE_WAV } : {},
-  onWake: () => {
-    wake.pause() // he must not hear his own beep and answer
-    win?.webContents.send('voice:toggle')
+  onWake: onWoke,
+  onState: onWakeState
+})
+const wakeKws = require('./wake-kws').create({ audio, send: (channel, payload) => win?.webContents.send(channel, payload), onWake: onWoke, onState: onWakeState })
+// the on-PC keyword spotter when its model is installed, otherwise the Windows speech recogniser (tests keep the old one unless asked)
+const useKws = () => audioModels.ready('wake') && !(process.env.SPIDEY_TEST && !process.env.JARVIS_TEST_KWS)
+let wakeImpl = wakeLegacy
+const wake = {
+  start() {
+    const next = useKws() ? wakeKws : wakeLegacy
+    if (next !== wakeImpl) wakeImpl.stop()
+    wakeImpl = next
+    wakeImpl.start()
   },
-  onState: (s, detail) => win?.webContents.send('wake:state', { state: s, detail: detail || '' })
+  stop: () => wakeImpl.stop(),
+  pause: () => wakeImpl.pause(),
+  resume: () => wakeImpl.resume(),
+  get state() {
+    return wakeImpl.state
+  }
+}
+ipcMain.on('wake:pcm', (e, samples) => {
+  if (e.sender === win?.webContents && samples instanceof Float32Array) wakeKws.pcm(samples)
+})
+ipcMain.on('wake:mic', (e, ev) => {
+  if (e.sender === win?.webContents) wakeKws.mic(ev)
 })
 function maybeResumeWake() {
   clearTimeout(wakeResume)

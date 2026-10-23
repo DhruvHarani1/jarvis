@@ -341,6 +341,20 @@ Each milestone ends with tests green and a short demo script. Rough sizes are fo
 - Benchmark STT models on the user's recorded phrases and choose the default.
 - **Acceptance:** (1) 20 recorded phrases: WER under agreed threshold (set after benchmark, target ≤ 10%). (2) Wake word fires ≥ 9/10 on "hey jarvis", ≤ 1 false trigger in 30 minutes of normal speech/TV (manual). (3) First spoken word ≤ 1.5 s after end of speech on a fast provider. (4) Saying something during playback stops speech within 300 ms. (5) Idle with wake word on stays within the budget. (6) Works fully offline except the LLM call. (7) Old SAPI STT/wake code deleted, tests updated.
 
+### M1 results so far (2026-10-24)
+
+Built and passing (unit: `npm run test:unit`, real app: `npm run e2e`):
+- `audio/` worker process (Electron utilityProcess) with Moonshine STT, Piper TTS and the keyword spotter, lazy-loaded, killed after 2 minutes idle. Model installer (`audio/models.js`): asks first with name, size, source and license; SHA-256 (npm: SHA-512) checked before unpacking; archives listed and refused if any path escapes the target folder; staged then moved into place. Tray: "Download voice models…".
+- **Natural voice**: Piper "Alan" (British) through sherpa-onnx, phonemizer (GPL, downloaded as a separate optional component, never linked) in the models folder. Speaks about 4-6x faster than real time on this PC (RTF 0.17-0.26), sentence by sentence, one sentence ahead. Falls back to the Windows voice per sentence if anything fails, and rests 60 s.
+- **On-PC speech recognition** in the real app: the fake microphone's "what is my cpu" was transcribed by Moonshine. Found and fixed: Moonshine returns nothing when a clip starts with seconds of room noise, so `trimSilence` cuts to the speech first.
+- **On-PC wake word** in the real app: a spoken "Hey Jarvis" wakes it, plain speech does not (`scripts/e2e-wake.js`, one sample each).
+- Two Electron-specific bugs found and fixed: sherpa's TTS returns native-owned buffers that Electron refuses ("External buffers are not allowed"; fixed with `enableExternalBuffer: false`), and `autoplayPolicy` had to allow audio without a click.
+- The old Windows speech recogniser path and the Windows wake word stay as fallbacks for when the models are not installed (they were meant to be deleted; keeping them costs nothing and the app still works with zero downloads).
+
+**Memory measured (`scripts/measure-ram.js`, whole process tree):** idle with window, wake word off: **287 MB**; wake word listening: **449 MB**; after speaking a reply (voice model loaded): **537 MB**. This is **over the budget** in section 3 (150 MB idle, +40 MB for wake word). Causes: a full Chromium renderer is needed for microphone capture, plus the audio worker. Planned fix in M5: no window = no renderer for the plain tray state, and the wake-word capture moved to the smallest possible hidden page.
+
+Still open for M1 acceptance: (1) WER on 20 of the user's own recordings, (2) false-wake rate over 30 minutes of TV/speech, (3) end-of-speech to first spoken word timing with a real provider, (4) barge-in by voice (speaking over Jarvis; needs echo cancellation, hotkey/mic button already stops him), (5) RAM budget (above).
+
 ### M2: Tools, actions and permissions (3-5 sessions)
 
 - Tool registry, permission engine, audit log, undo, confirm UI; agent loop with bounded steps.

@@ -261,8 +261,8 @@ The user pastes their own keys; Jarvis never creates accounts or shares keys, an
 
 ### ADR-3: Default models
 
-- **TTS:** Kokoro via sherpa-onnx as the recommended voice (download on first run); Piper-format small voice as the light option; SAPI stays as the instant zero-download fallback. Check each voice's license before listing it.
-- **STT:** decide in M1 by a benchmark on the user's own recorded phrases: Moonshine (tiny, streaming), a streaming zipformer, Whisper-base via sherpa. Pick the best WER within the RAM budget. Groq Whisper stays as optional cloud STT.
+- **TTS (revised after Spike C):** Kokoro int8 was too slow on this PC (RTF 2.4) and Piper is blocked by sherpa-onnx 2.0 needing a GPL phonemizer. SAPI stays the default until the M1 TTS shootout finds a voice with RTF below 0.5 here. See M0 results for candidates.
+- **STT (decided after Spike C):** VAD + Moonshine base en. Confirm on the user's own recorded phrases in M1 (accent test). Groq Whisper stays as optional cloud STT.
 - **Wake word:** sherpa-onnx keyword spotter with text keywords "hey jarvis" / "okay jarvis". Needs false-accept tuning (M1 acceptance test).
 
 ### ADR-4: Agent and tool protocol
@@ -382,7 +382,22 @@ Arc-reactor HUD orb and ambient UI, proactive briefings ("good morning, 3 meetin
 - Local `scratch/` leftovers from the Spidey split deleted (git-ignored files only).
 - **Spike A passed:** `sherpa-onnx-node@2.0.0` (Apache-2.0) installs (23 MB Windows x64 package) and loads inside an Electron 44.7.2 `utilityProcess` in 13 ms (worker RSS 54 MB). It exports `KeywordSpotter`, `OnlineRecognizer`, `OfflineRecognizer`, `OfflineTts`, `Vad`. No model has been loaded yet.
 - **Spike B passed:** `node:sqlite` works in the Electron main process (Node 24.21) including an FTS5 virtual table.
-- Still open: Spike C (RAM of Kokoro TTS and a streaming STT model). It needs model downloads, which will be requested with file name, source and size before anything is fetched. Repro scripts: `scripts/spikes/`.
+- **Spike C done (models downloaded 2026-10-24, SHA-256 checked against the release checksum files, extracted into git-ignored `models-dev/`).** Machine: Core Ultra 5 125H, 15.8 GB RAM, about 3.4 GB free at test time. Scripts: `scripts/spikes/spike-c.js`, `spike-kws.js`, `spike-tts-threads.js`, `bpe.py`.
+
+| Part | Model | Result |
+|------|-------|--------|
+| STT | Moonshine base en (quantized, 106 MB archive) | **Winner.** 6.6 s clip decoded in about 0.65 s (RTF ~0.1), correct words, case and punctuation. Transcribed a synthetic "Hey Jarvis, what is the time right now?" exactly. About +200 MB RSS when loaded. Utterance-level (use after VAD), no live partials. |
+| STT | Streaming zipformer en 20M (121 MB archive) | Fast (RTF ~0.09), live partials, but worse: "BRAFFLELS", and "Y JARVIS" for "Hey Jarvis". Keep only if live partial text in the UI matters. |
+| Wake word | KWS zipformer gigaspeech 3.3M (17 MB) | **Works** once the keyword is tokenised with the model's own BPE model (`HEY JARVIS` becomes `▁HE Y ▁JA R VI S`). Detected "hey jarvis" in a test clip. About +25 MB RSS. False-accept rate on TV and speech not measured yet. Keywords will ship pre-tokenised (sentencepiece is only a dev-time tool). |
+| VAD | Silero v5 (2 MB) | Loads fine. Not yet timed on live audio. |
+| TTS | Kokoro int8 en v0.19 (98 MB) | **Too slow here.** RTF 2.4 with 2 threads (5.7 s to speak 2.4 s of audio), 2.7 with 1 thread, 6.7 with 4 threads. About 455 MB RSS after the first synthesis. Quality is good but it cannot talk in real time on this PC. Also, sherpa-onnx 2.0 needs a separate `lexicon-en-us.txt` (6 MB, from the same release) because it dropped built-in espeak. |
+| TTS | Piper lessac-medium int8 (19 MB) | **Blocked.** sherpa-onnx 2.0 removed built-in espeak phonemizing. Piper needs an external phonemizer (`piper-phonemize-node`, GPL-3.0-or-later), and without one the native library crashes (segfault, exit 139). |
+
+Memory with everything loaded at once was 744 MB RSS, so models must be loaded on demand and unloaded when idle, as already planned.
+
+**What this changes (ADR-3 updated):**
+- STT default: VAD + Moonshine base en. Wake word: sherpa KWS. Both confirmed.
+- TTS is the open problem. M1 starts with a TTS shootout and the default stays Windows SAPI until one candidate runs at RTF below 0.5 on this PC. Candidates: (1) Kokoro fp32 (304 MB archive; int8 may be the slow variant, since dynamic int8 can be slow on some CPUs), (2) Piper British male "alan" voices (very Jarvis) with the GPL phonemizer downloaded as an optional component, since Jarvis is free and open source and the phonemizer is not linked into the app, (3) pinning sherpa-onnx 1.x that still bundles espeak, (4) a smaller VITS voice with a lexicon, (5) optional cloud TTS as a user choice. Needs your decision on GPL (see open questions).
 
 ## 13. Risks
 

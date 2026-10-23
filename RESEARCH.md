@@ -37,6 +37,8 @@ Rank = how much it helps Jarvis v2 given the constraints (Windows, Node/Electron
 
 ### Avoid or caution
 
+> Revision 2: Jarvis is free and open source, so non-commercial model licenses (openWakeWord) are acceptable as an optional engine with a license notice. GPL (piper1-gpl) is still not linked because it would relicense the whole app. Picovoice, Open WebUI, Coqui XTTS and nut.js remain poor choices for technical, not commercial, reasons.
+
 | Project | Why |
 |---------|-----|
 | dscripka/openWakeWord (Apache-2.0 code) | Has a ready "hey jarvis" model, but its README says **all pre-trained models are CC BY-NC-SA 4.0 (non-commercial)**. Fine for personal use, a trap if Jarvis is ever published or sold. Also Python / needs a hand-ported mel + embedding pipeline in Node. Use sherpa-onnx keyword spotting instead (open-vocabulary, no custom training). Revisit only if KWS quality is poor. |

@@ -1,8 +1,8 @@
 'use strict'
 /**
- * Karen's brain: a failover chain of AI providers.
+ * Jarvis's brain: a failover chain of AI providers.
  *
- *   key 1 → key 2 → key 3  (up to three online attempts per question)  →  local Ollama  →  "offline" (Karen's rule engine)
+ *   key 1 → key 2 → key 3  (up to three online attempts per question)  →  local Ollama  →  "offline" (Jarvis's rule engine)
  *
  * - Every provider speaks the OpenAI-compatible chat API, so NVIDIA, Groq, Gemini, OpenRouter, your own URL and Ollama share one code path.
  * - A key that hits its limit (429) or errors is put in a cooldown and skipped; a rejected key (401/403) is marked bad until you change it.
@@ -19,7 +19,7 @@ const MAX_ENTRIES = 12
 const OLLAMA_BASE = 'http://127.0.0.1:11434/v1'
 const MAX_MODEL_TRIES = 6
 const STT_MODELS = ['whisper-large-v3-turbo', 'whisper-large-v3']
-// a hint that biases Whisper toward the words Karen actually hears
+// a hint that biases Whisper toward the words Jarvis actually hears
 const STT_PROMPT = 'Jarvis, WhatsApp, reminder, notifications, CPU, RAM, timer, Dhruv.'
 const ONLINE_STREAM_MS = 60_000
 const FIRST_TOKEN_MS = 20_000
@@ -568,7 +568,7 @@ function createBrain(deps) {
     return { ok: false, error: r.message, kind: r.kind }
   }
 
-  /** is there anything that could answer a chat right now? (used to decide whether Karen should chat naturally) */
+  /** is there anything that could answer a chat right now? (used to decide whether Jarvis should chat naturally) */
   async function ready() {
     if (!store.naturalChat) return false
     if (store.entries.some((e) => e.enabled !== false && !state(e.id).bad)) return true

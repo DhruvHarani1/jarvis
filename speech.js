@@ -1,9 +1,9 @@
 'use strict'
 /**
- * Karen's voice. Chromium inside Electron exposes no speech voices, so the browser speech API stays silent;
+ * Jarvis's voice. Chromium inside Electron exposes no speech voices, so the browser speech API stays silent;
  * instead we use the speech engine Windows already ships (System.Speech / SAPI voices such as Zira and David).
  *
- * One long-lived PowerShell "speaker" process is kept while Karen is in use (it is shut down after a minute of
+ * One long-lived PowerShell "speaker" process is kept while Jarvis is in use (it is shut down after a minute of
  * silence, so it costs no RAM when idle). Sentences are sent to it one line at a time as base64 on stdin, never in a
  * command line, so nothing a reply contains can be run as code. Because it uses SpeakAsync it can be cancelled instantly.
  *

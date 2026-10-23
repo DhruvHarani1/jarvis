@@ -2,6 +2,16 @@
 
 Status: **draft for approval**. Nothing in this plan has been built yet. Evidence and sources are in `RESEARCH.md`.
 
+## 0. Revision 2 (after Dhruv's answers, 2026-10-24)
+
+Decisions from the user, which override anything below that disagrees:
+
+1. **Open source, free, non-commercial.** Jarvis is a free open-source project. So non-commercial model licenses (for example openWakeWord's CC BY-NC-SA "hey jarvis" model) are acceptable as an *optional* wake-word engine, with the license shown in `NOTICE`. GPL code (piper1-gpl) is still not linked, because a GPL dependency would force the whole app to GPL; Piper-format voices run through sherpa-onnx anyway, so nothing is lost. Default stays sherpa-onnx keyword spotting (no license issue).
+2. **Control the whole PC, "Iron Man experience".** Scope grows from "a few Windows tools" to a full **connector layer**: WhatsApp, Spotify, Mail, Calendar, Teams, browser, any desktop app. The security tiers stay (an assistant that can act on everything must be able to be stopped), but Tier 3 is no longer "never": a **Power mode** (arbitrary PowerShell and UI automation) exists, off by default, every call confirmed with the exact command shown. See section 5.5.
+3. **Only a Groq key so far.** The plan works with one key. M4 includes a "get more free keys" guide (Cerebras, Gemini, OpenRouter, Mistral). The user signs up and pastes keys; Jarvis never does.
+4. **FreeLLMAPI "7.4B free tokens" checked.** True only as a sum of every listed free tier across ~34 providers, each of which needs *your own account and key*. FreeLLMAPI creates no tokens; with zero provider keys it gives you nothing. With one Groq key it routes to Groq only. Details in `RESEARCH.md` section 3 and section 6 below.
+5. **Start now.** M0 started (see section 12, M0 results).
+
 ## 1. Summary
 
 Jarvis today is a good voice shell with no hands: it hears you, thinks with free LLM keys, speaks with robotic Windows voices, and reads notifications aloud. v2 keeps that shell and adds what is missing:
@@ -27,7 +37,7 @@ Recommendation on the question that started this: **do not run FreeLLMAPI as par
 
 ### Non-goals (v2)
 
-- No arbitrary "run any shell command" tool. No computer-vision click-anything agent.
+- (Revised) Arbitrary shell and UI automation are allowed only in opt-in **Power mode** with per-call confirmation. Screenshot-based "see the screen" agent is a later milestone (M6), not v2.0.
 - No multi-user, no cloud account, no server component, no phone app.
 - No always-on cloud streaming of audio.
 - No mac/Linux support (the code should not gratuitously block it, but nothing is tested there).
@@ -143,7 +153,7 @@ Every call is schema-validated before it runs. Tools never get a shell string; t
 | T0 | Read-only, local | time, battery, CPU/RAM, list reminders, read clipboard, search files by name | Allow, log |
 | T1 | Reversible local change | open app, set volume, mute, media keys, create timer/reminder, write clipboard, open URL in default browser | Allow, log, offer undo |
 | T2 | Consequential or leaves the PC | move/rename/delete files (Recycle Bin only), send mail or message (MCP), close an app with unsaved work, anything from an untrusted MCP server | **Ask each time**: on-screen button and spoken yes/no |
-| T3 | Never | arbitrary shell, registry edits, disk format, credential or key access, disabling security software | Not registered |
+| T3 | Power mode (opt-in) | arbitrary PowerShell, registry edits, UI automation of any app | Off by default; when on, every call confirmed with the full command. Still never registered: reading Jarvis's own key store, disabling security software, disk format |
 
 Policy is user-adjustable (stricter only for T2/T3 in v2; relaxing T2 to "allow" is a later, explicit setting per tool).
 
@@ -155,6 +165,24 @@ Policy is user-adjustable (stricter only for T2/T3 in v2; relaxing T2 to "allow"
 - **Step and cost limits.** Max 5 tool steps per turn, max 1 T2 per turn without re-asking, wall-clock cap per turn.
 - **Audit log + undo.** Every call is logged (tool, redacted args, decision, outcome). "Undo that" runs the last undo handle. Undo exists for volume, mute, file move/rename, delete (restore from Recycle Bin), reminders; it does not exist for sent messages, and the UI says so before they are sent.
 - **Mic indicator.** The orb shows listening state; with wake word on, a distinct icon state shows an always-on local listener (existing behaviour, keep).
+
+### 5.5 Connectors: "use my whole PC" (added in Revision 2)
+
+Honest map of how each app can be controlled, from safest to hackiest. Each connector is a bundle of tools with its own tiers.
+
+| App | Best route | Notes |
+|-----|-----------|-------|
+| Any desktop app | Launch by name / Start-menu search; **Windows UI Automation** (UIA, built in) to read and click controls; `SendKeys` as last resort | Works with Teams, WhatsApp desktop, anything with accessible controls. Slower and less reliable than an API. |
+| Spotify | `spotify:` URI scheme (search, play a URI), media keys (play/pause/next/volume); optional Spotify Web API with the user's own OAuth app for "play my Liked Songs" | Playback control through the API needs Spotify Premium; media keys and URIs work on free accounts. |
+| WhatsApp | `whatsapp://send?phone=..&text=..` opens the chat with the message filled in; then UIA presses Send **after confirmation**; reading messages comes from the existing notification inbox | No official personal-account API exists. Libraries that drive WhatsApp Web (e.g. whatsapp-web.js) risk the account being banned under WhatsApp's terms, so they are **not** used. |
+| Mail | MCP server for Gmail or Outlook, or Gmail / Microsoft Graph API with the user's own OAuth app; reading = T0, sending = T2 | OAuth tokens stored via DPAPI like API keys. |
+| Calendar | Same as mail (Google Calendar API or Microsoft Graph); a Google Calendar MCP server exists | Create/edit events = T1 with undo (delete); inviting others = T2. |
+| Teams | Deep links (`msteams:`) to open chat/meeting, UIA to click Join/Mute; Microsoft Graph chat send needs a work/school tenant and app registration | Personal accounts have limited API access; UIA path is the realistic default. |
+| Browser | Open URL / search in the default browser; later, a browser MCP server or extension for page actions | Page text is untrusted content (taint rule applies). |
+| Files, clipboard, windows, volume, power | Native tools in M2 | Already planned. |
+| Shell | Power mode only | Command shown in full and confirmed every time. |
+
+The same rules apply to all of them: schema-validated args, tier per tool, audit log, undo where possible, outbound messages always confirmed, injected text from messages and web pages can never confirm an action.
 
 ### 5.4 MCP
 
@@ -319,7 +347,13 @@ Each milestone ends with tests green and a short demo script. Rough sizes are fo
 - First tools: `open_app`, `open_url`, `set_volume`/`mute`, media keys, `set_timer`/`add_reminder`/`list_reminders`, `read_clipboard`/`write_clipboard`, `find_files`, `open_file`, `move_file` (T2), `delete_file` (T2, Recycle Bin), `system_status`, `read_notifications_summary` (local only).
 - Fast-path intents for the common ones.
 - Optional MCP client behind a setting, with one example server tested.
-- **Acceptance:** (1) "Open Notepad", "volume 30", "remind me in 10 minutes to stand up" work by voice. (2) "Delete the file X" shows the exact path, needs click plus yes, goes to Recycle Bin, "undo" restores. (3) Prompt-injection test cannot trigger a T2 tool without a click. (4) Path traversal tests all denied. (5) Audit log shows every call; viewer works. (6) No T3 tool exists (test enumerates the registry). (7) Tool loop stops at max steps.
+- **Acceptance:** (1) "Open Notepad", "volume 30", "remind me in 10 minutes to stand up" work by voice. (2) "Delete the file X" shows the exact path, needs click plus yes, goes to Recycle Bin, "undo" restores. (3) Prompt-injection test cannot trigger a T2 tool without a click. (4) Path traversal tests all denied. (5) Audit log shows every call; viewer works. (6) With Power mode off, no T3 tool is in the registry (test enumerates it); the key store and security-software tools never exist. (7) Tool loop stops at max steps.
+
+### M2b: Connectors, the Iron Man layer (4-6 sessions, one connector at a time)
+
+Order by value for Dhruv: Spotify (URI + media keys), Calendar and Mail (OAuth or MCP, read first, then write), WhatsApp (URI + UIA send with confirmation, notification-based reading), Teams (deep links + UIA), generic UIA "click/type in app X", then Power mode.
+- **Acceptance per connector:** one voice command end to end against a fake target in tests (fake app window or fake API server), one manual run on the real app; outbound actions show recipient and text and wait for confirmation; audit entry written; token storage uses DPAPI; connector can be disabled in settings.
+- Power mode acceptance: off by default; every command shown in full; denied commands never run; a prompt-injection fixture cannot reach it.
 
 ### M3: Memory (1-2 sessions)
 
@@ -336,6 +370,19 @@ Each milestone ends with tests green and a short demo script. Rough sizes are fo
 
 - Installer review, auto-update test across two versions, first-run wizard (mic, optional models, keys), README, privacy page, resource-budget script in the release checklist. Publishing to GitHub only when the user says so.
 - **Acceptance:** clean Windows VM install works; upgrade from previous build keeps settings/keys/memory; budget script within limits; release checklist signed off; license/NOTICE audit passes (no GPL, no non-commercial models bundled).
+
+### M6: Full Iron Man polish (after v2.0)
+
+Arc-reactor HUD orb and ambient UI, proactive briefings ("good morning, 3 meetings, 12 unread"), "you have a call from Mum" interrupts, screenshot-based screen understanding for apps without accessible controls (vision-capable provider, T2 confirmations), multi-step plans spoken back before running. Each needs its own mini-design before starting.
+
+### M0 results so far (2026-10-24)
+
+- Baseline `npm run test:unit`: all 11 suites pass after fixing a timing flake in `scripts/stt-test.js` (temp-file deletion check waited 30 ms; now polls up to 1 s). `node scripts/e2e.js` not yet re-run on this machine.
+- Karen strings renamed to Jarvis in source comments and the local-model system prompt; Spidey-themed prompt removed.
+- Local `scratch/` leftovers from the Spidey split deleted (git-ignored files only).
+- **Spike A passed:** `sherpa-onnx-node@2.0.0` (Apache-2.0) installs (23 MB Windows x64 package) and loads inside an Electron 44.7.2 `utilityProcess` in 13 ms (worker RSS 54 MB). It exports `KeywordSpotter`, `OnlineRecognizer`, `OfflineRecognizer`, `OfflineTts`, `Vad`. No model has been loaded yet.
+- **Spike B passed:** `node:sqlite` works in the Electron main process (Node 24.21) including an FTS5 virtual table.
+- Still open: Spike C (RAM of Kokoro TTS and a streaming STT model). It needs model downloads, which will be requested with file name, source and size before anything is fetched. Repro scripts: `scripts/spikes/`.
 
 ## 13. Risks
 

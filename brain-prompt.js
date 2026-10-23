@@ -1,12 +1,12 @@
 'use strict'
 /**
- * What Karen's "brain" is told and how its answer is understood. Pure functions (unit-tested).
+ * What Jarvis's "brain" is told and how its answer is understood. Pure functions (unit-tested).
  *
  * Privacy: the model only ever sees what you typed/said plus ONE short status line (time, CPU/RAM, timer…).
  * Notification contents, file names and the like are never put in a prompt.
  */
 
-/** Commands the model may trigger. Each is run through Karen's own rule engine, so it can do nothing a typed command could not. */
+/** Commands the model may trigger. Each is run through Jarvis's own rule engine, so it can do nothing a typed command could not. */
 const ALLOWED_ACTIONS = new Set([
   'remind', 'timer', 'collapse', 'sound', 'opacity', 'voice', 'voice-pick', 'voice-list', 'speak-test',
   'reader', 'reader-mode', 'reader-mute', 'call-me', 'missed', 'repeat', 'speech-stop', 'reader-status',
@@ -126,7 +126,7 @@ const ABBREV = /(?:^|\s)(?:mr|mrs|ms|dr|prof|vs|etc|e\.g|i\.e|approx|no|st)$/i
 
 /**
  * Feeds on the reply as it streams in and calls onSentence(text) as soon as a sentence is complete,
- * so Karen can start talking before the model has finished writing.
+ * so Jarvis can start talking before the model has finished writing.
  *  - the trailing "DO: command" line is never spoken
  *  - <think>…</think> blocks are skipped
  *  - a reply that starts with "{" (JSON) is not streamed; it is parsed once at the end

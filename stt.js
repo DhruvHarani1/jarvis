@@ -20,7 +20,7 @@ const WIN_SCRIPT = [
   '$dec = { param($v) if ($v) { [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($v)) | ConvertFrom-Json } }',
   '$phrases = & $dec $env:SPIDEY_PHRASES',
   '$numbers = & $dec $env:SPIDEY_NUMBERS',
-  // 1) exactly the phrases Karen understands: by far the most accurate way to recognise a command
+  // 1) exactly the phrases Jarvis understands: by far the most accurate way to recognise a command
   'if ($phrases) { $c = New-Object System.Speech.Recognition.Choices; foreach ($p in $phrases) { $c.Add([string]$p) }; $gb = New-Object System.Speech.Recognition.GrammarBuilder; $gb.Append($c); $g = New-Object System.Speech.Recognition.Grammar($gb); $g.Name = "commands"; $e.LoadGrammar($g) }',
   // 2) "remind me in <number> <unit> to <anything>"
   'if ($numbers) { $n = New-Object System.Speech.Recognition.Choices; foreach ($w in $numbers) { $n.Add([string]$w) }; $u = New-Object System.Speech.Recognition.Choices; foreach ($w in @("second","seconds","minute","minutes","hour","hours")) { $u.Add($w) }; $rb = New-Object System.Speech.Recognition.GrammarBuilder; $rb.Append("remind me in"); $rb.Append($n); $rb.Append($u); $rb.Append("to"); $rb.AppendDictation(); $rg = New-Object System.Speech.Recognition.Grammar($rb); $rg.Name = "reminder"; $e.LoadGrammar($rg) }',

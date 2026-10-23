@@ -1,7 +1,7 @@
 'use strict'
 /**
- * Optional free-form brain for Karen: a small open-source model running locally through Ollama.
- * Nothing leaves the machine (127.0.0.1 only). No Ollama installed => Karen just uses her rule engine.
+ * Optional free-form brain for Jarvis: a small open-source model running locally through Ollama.
+ * Nothing leaves the machine (127.0.0.1 only). No Ollama installed => Jarvis just uses its rule engine.
  */
 const BASE = 'http://127.0.0.1:11434'
 const PREFER = [/qwen2\.5.*(0\.5|1\.5|3)b/i, /llama3\.2/i, /smollm/i, /gemma/i, /phi/i, /qwen/i]
@@ -33,7 +33,7 @@ async function status(wanted) {
 }
 
 const SYSTEM =
-  'You are Karen, the terse AI in a Spider-Man themed Windows PC widget. Be friendly, witty, max 25 words. ' +
+  'You are Jarvis, a terse, witty voice assistant on the user’s Windows PC. Be friendly, witty, max 25 words. ' +
   'Reply ONLY with JSON: {"say":"...","action":null}. action may be one of ' +
   '{"type":"remind","minutes":N,"text":"..."} | {"type":"timer","op":"focus|break|pause|reset"} | {"type":"sound","on":true|false} | {"type":"collapse"}. ' +
   'Use an action only if the user clearly asks for it. Never invent PC numbers: use the live stats given.'

@@ -79,7 +79,7 @@ const noKey = { canTranscribe: () => false, transcribe: async () => assert.fail(
     assert.equal(seen.fileExisted, true, 'Windows got a real WAV file')
     assert.equal(seen.fileBytes, wav.length)
     assert.deepEqual(JSON.parse(Buffer.from(seen.env.SPIDEY_PHRASES, 'base64').toString()), ['start focus', 'stop'], 'phrases travel as base64 JSON in the environment')
-    await new Promise((r) => setTimeout(r, 30))
+    for (let i = 0; i < 40 && fs.existsSync(seen.file); i++) await new Promise((r) => setTimeout(r, 25))
     assert.equal(fs.existsSync(seen.file), false, 'the temporary recording is deleted straight away')
   }
   // offline mode: the cloud is never asked, whatever keys exist

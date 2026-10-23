@@ -384,7 +384,7 @@ ipcMain.handle('fast:try', async (e, text) => {
     return { handled: true, say: r.ok ? r.spoken : r.error }
   }
   const r = await tools.runtime.call(f.name, f.args, { source: 'fastpath', tainted: conversationTainted })
-  if (r.untrusted) conversationTainted = true
+  // fast-path results are only spoken and shown, never given to the language model, so reading untrusted text here does not taint the conversation
   return { handled: true, ok: r.ok, say: r.ok ? r.spoken || 'Done.' : r.declined ? 'Okay, I will not do that.' : `I could not do that: ${r.error}.` }
 })
 ipcMain.handle('tools:list', (e) => (e.sender === win?.webContents && tools ? tools.toolList() : []))

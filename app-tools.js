@@ -12,6 +12,7 @@ const { createSandbox } = require('./tools/paths')
 const { createRuntime } = require('./tools/runtime')
 const { createTools, FOLDERS } = require('./tools/windows')
 const psReal = require('./tools/ps')
+const { createSpotifyTools } = require('./tools/spotify')
 const { createAgent } = require('./agent')
 
 /**
@@ -31,9 +32,16 @@ function create({ electron, userData, brain, settings, confirm, onReminder, ps }
   const testRoot = process.env.SPIDEY_TEST && process.env.JARVIS_TEST_ROOT // tests keep file tools inside a throw-away folder
   const sandbox = createSandbox(testRoot ? [testRoot] : FOLDERS.map(folderPath).filter((p) => p && fs.existsSync(p)))
   const runtime = createRuntime({ audit: auditLog, confirm, powerMode: () => !!settings().powerMode, disabled: () => settings().disabledTools || [] })
+  // tests record what would have been opened instead of opening it on the real PC
+  const shell = process.env.SPIDEY_TEST && process.env.JARVIS_TEST_PS_LOG
+    ? {
+        openExternal: async (u) => fs.appendFileSync(process.env.JARVIS_TEST_PS_LOG, JSON.stringify({ which: 'openExternal', arg: u }) + '\n'),
+        openPath: async (p) => (fs.appendFileSync(process.env.JARVIS_TEST_PS_LOG, JSON.stringify({ which: 'openPath', arg: p }) + '\n'), '')
+      }
+    : electron.shell
   const tools = createTools({
     ps: ps || ((script, arg) => psReal.run(script, arg)),
-    shell: electron.shell,
+    shell,
     clipboard: process.env.SPIDEY_TEST && process.env.JARVIS_TEST_CLIPBOARD ? { readText: () => process.env.JARVIS_TEST_CLIPBOARD, writeText() {} } : electron.clipboard,
     scheduler: sched,
     sandbox,
@@ -41,7 +49,8 @@ function create({ electron, userData, brain, settings, confirm, onReminder, ps }
     os,
     folder: folderPath
   })
-  for (const t of tools) runtime.register(t)
+  const runPs = ps || ((script, arg) => psReal.run(script, arg))
+  for (const t of [...tools, ...createSpotifyTools({ ps: runPs, shell })]) runtime.register(t)
   const agent = createAgent({ brain: { chat: (m, d, o) => brain().chat(m, d, o) }, runtime })
   sched.start()
   return { runtime, agent, audit: auditLog, scheduler: sched, sandbox, toolList: () => runtime.tiers() }

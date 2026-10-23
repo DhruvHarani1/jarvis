@@ -95,6 +95,15 @@ function parse(raw, o = {}) {
   if (/^(system status|how(?:'s| is) my (?:pc|computer|laptop|system)(?: doing)?|pc status|computer status|how(?:'s| is) the pc|battery|battery level|how much battery(?: do i have| is left)?|cpu usage)$/.test(t)) return { kind: 'tool', name: 'system_status', args: {} }
   if (/^(what(?:'s| are) my reminders|list (?:my )?reminders|list (?:my )?timers|show (?:my )?reminders)$/.test(t)) return { kind: 'tool', name: 'list_reminders', args: {} }
 
+  // Spotify (free account: names open the search, links play directly)
+  if (/^(what(?:'s| is) playing|what song is (?:this|playing)|what(?:'s| is) this song|which song is this|what am i listening to|now playing)(?: on spotify)?$/.test(t)) return { kind: 'tool', name: 'spotify_now_playing', args: {} }
+  if (/^(open|play|show) (?:my )?liked songs(?: on spotify)?$/.test(t)) return { kind: 'tool', name: 'spotify_open_liked_songs', args: {} }
+  if ((m = /^(?:search spotify for|search for|find) (.{2,80}?) (?:on|in) spotify$/.exec(t)) || (m = /^(?:search spotify for|spotify search(?: for)?) (.{2,80})$/.exec(t)) || (m = /^(?:play|put on|queue|find) (.{2,80}?) (?:on|in|from|using) spotify$/.exec(t))) return { kind: 'tool', name: 'spotify_search', args: { query: m[1].trim() } }
+
+  // a pasted Spotify link or URI (IDs are case sensitive, so look at the raw text)
+  const bare = String(raw || '').trim().replace(/^(?:hey |ok |okay )?jarvis[, ]+/i, '').replace(/^please /i, '').replace(/[?!.]+$/, '')
+  if ((m = /^play (\S+)$/i.exec(bare)) && /^(spotify:|https:\/\/open\.spotify\.com\/)/i.test(m[1])) return { kind: 'tool', name: 'spotify_play', args: { link: m[1] } }
+
   if ((m = /^(?:open|launch|start|run) (?:the )?(.{2,40}?)(?: app| application)?$/.exec(t))) {
     const what = m[1].trim()
     if (/^(timer|a timer|the timer|focus|conversation|wake|listening|notifications)/.test(what)) return null

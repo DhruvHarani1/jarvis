@@ -42,6 +42,18 @@ const cases = [
   ['open microsoft teams', tool('open_app', { name: 'microsoft teams' })],
   ['open youtube', tool('open_url', { url: 'https://www.youtube.com/' })],
   ['open gmail', tool('open_url', { url: 'https://mail.google.com/' })],
+  // spotify
+  ['what is playing', tool('spotify_now_playing', {})],
+  ["what's playing on spotify", tool('spotify_now_playing', {})],
+  ['what song is this', tool('spotify_now_playing', {})],
+  ['play despacito on spotify', tool('spotify_search', { query: 'despacito' })],
+  ['Jarvis play the weeknd from spotify please', tool('spotify_search', { query: 'the weeknd' })],
+  ['search spotify for daft punk', tool('spotify_search', { query: 'daft punk' })],
+  ['find lofi beats in spotify', tool('spotify_search', { query: 'lofi beats' })],
+  ['play my liked songs', tool('spotify_open_liked_songs', {})],
+  ['open liked songs', tool('spotify_open_liked_songs', {})],
+  ['play spotify:track:4cOdK2wGLETKBW3PvgPWqT', tool('spotify_play', { link: 'spotify:track:4cOdK2wGLETKBW3PvgPWqT' })],
+  ['play https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT?si=abc', tool('spotify_play', { link: 'https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT?si=abc' })],
   // status, undo
   ['how is my pc doing', tool('system_status', {})],
   ['what is my battery level', null],
@@ -63,7 +75,8 @@ for (const text of [
   'open the pod bay doors and tell me a story about a very long adventure that never ends ok', // too long
   'open timer', 'start focus', 'open notifications',
   'set a timer for banana minutes', 'set a timer for 0 minutes', 'set a timer for 5000 minutes', 'volume 150', 'volume 3.5', 'set the volume to loud',
-  'remind me', 'remind me in 20 minutes', 'delete the file called taxes', 'send a message to mum saying hello', 'play despacito on spotify'
+  'remind me', 'remind me in 20 minutes', 'delete the file called taxes', 'send a message to mum saying hello',
+  'play something nice'
 ]) assert.equal(parse(text), null, JSON.stringify(text))
 
 console.log('fastpath: ALL PASS')

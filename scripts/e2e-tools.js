@@ -121,6 +121,16 @@ async function connect(match) {
     ok('"undo that" restored the old volume', psCalls().filter((c) => c.which === 'audioSet').at(-1).arg.level === 40)
     ok('none of that needed the language model', providerSaw.length === before)
 
+    // ---- Spotify (free account tools: links and window title)
+    await w.ev('window.Assistant.handle("what is playing")')
+    ok('"what is playing" reads the Spotify window title', (await lastLine(w)) === 'Never Gonna Give You Up by Rick Astley.')
+    await w.ev('window.Assistant.handle("play despacito on spotify")')
+    ok('"play despacito on spotify" opens Spotify search (a spotify: link only)', psCalls().some((c) => c.which === 'openExternal' && c.arg === 'spotify:search:despacito'))
+    ok('and says to press play', /press play/i.test(await lastLine(w)))
+    await w.ev('window.Assistant.handle("play spotify:track:4cOdK2wGLETKBW3PvgPWqT")')
+    ok('a pasted track link starts it with :play', psCalls().some((c) => c.which === 'openExternal' && c.arg === 'spotify:track:4cOdK2wGLETKBW3PvgPWqT:play'))
+    ok('nothing but spotify: links was ever opened', psCalls().filter((c) => c.which === 'openExternal').every((c) => c.arg.startsWith('spotify:')))
+
     // ---- model-requested tool
     await w.ev('window.Assistant.handle("make my laptop a bit louder")')
     ok('the model asked for set_volume and it ran', psCalls().some((c) => c.which === 'audioSet' && c.arg.level === 55))

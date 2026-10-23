@@ -5,6 +5,7 @@
  */
 const fs = require('node:fs')
 const { PS } = require('./windows')
+const { PS_TITLE } = require('./spotify')
 
 const APPS = [
   { name: 'Spotify', id: 'SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify' },
@@ -17,9 +18,10 @@ function create({ logFile } = {}) {
   let volume = { level: 40, muted: false }
   const calls = []
   async function ps(script, arg) {
-    const which = Object.keys(PS).find((k) => PS[k] === script) || 'unknown'
+    const which = script === PS_TITLE ? 'spotifyTitle' : Object.keys(PS).find((k) => PS[k] === script) || 'unknown'
     calls.push({ which, arg })
     if (logFile) fs.appendFileSync(logFile, JSON.stringify({ which, arg }) + '\n')
+    if (which === 'spotifyTitle') return JSON.stringify({ running: true, title: 'Rick Astley - Never Gonna Give You Up' })
     if (which === 'startApps') return JSON.stringify(APPS)
     if (which === 'audioGet') return JSON.stringify(volume)
     if (which === 'audioSet') return JSON.stringify((volume = { ...volume, level: arg.level }))

@@ -387,6 +387,17 @@ Order by value for Dhruv: Spotify (URI + media keys), Calendar and Mail (OAuth o
 - **Acceptance per connector:** one voice command end to end against a fake target in tests (fake app window or fake API server), one manual run on the real app; outbound actions show recipient and text and wait for confirmation; audit entry written; token storage uses DPAPI; connector can be disabled in settings.
 - Power mode acceptance: off by default; every command shown in full; denied commands never run; a prompt-injection fixture cannot reach it.
 
+### M2b progress (2026-10-24)
+
+**Spotify: done for a free account.** Verified against the real Spotify desktop app on this PC: a `spotify:track:...:play` link started the song after a cold launch (about 7 s), the window title gave "Never Gonna Give You Up by Rick Astley", and a media key paused it.
+- Tools: `spotify_now_playing`, `spotify_search`, `spotify_play` (a spotify: URI or open.spotify.com link; tracks, albums, playlists and episodes start, artists and shows open), `spotify_open_liked_songs`; the existing media keys do play, pause, next and previous. Voice: "what's playing", "play despacito on spotify" (opens Spotify's search; you press play), "play my liked songs", "next song".
+- **Limit, and why:** "play song X" cannot start by name on a free account. Since February 2026 Spotify only lets Premium accounts create developer apps (TechCrunch, 2026-02-06), so there is no free route to search through the API. Only fixed spotify: links are ever opened. If the account becomes Premium, the Web API can be added behind the same tool names.
+- Design finding: results of fast-path commands are only spoken and shown, never given to the language model, so they do not mark the conversation as tainted. (Tainting them made a later confirmation demand a click for no reason.)
+
+**Mail and calendar guides written, no code yet:** `docs/setup/README.md`, `google-mail-calendar.md`, `microsoft-mail-calendar-teams.md`. Key facts checked against Google's and Microsoft's own pages: Google Desktop-app client with a loopback redirect and PKCE; an External app left in Testing gets a refresh token that expires in 7 days, so the guide says to publish it (unverified-app screen is expected); Microsoft app registration as "any Entra ID tenant + personal accounts", public client, `http://localhost`. Not verified from here: whether a personal Microsoft account can register an app without an Azure sign-up (the guide says what to do if not), and which Teams permissions your employer lets you approve.
+
+**Next in M2b:** the Accounts window with Google and Microsoft sign-in (PKCE, DPAPI token store), then Calendar and Mail read tools, then the write tools with confirmation; WhatsApp and Teams (deep links plus UI automation); optional MCP client; Power mode.
+
 ### M3: Memory (1-2 sessions)
 
 - SQLite schema + migrations, history, facts with FTS5, session summaries, memory commands, viewer/export, secret filter.

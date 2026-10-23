@@ -119,12 +119,22 @@ function winTranscribe(wav, phrases = [], timeoutMs = 20_000) {
 
 /**
  * @param {Buffer} wav
- * @param {{brain?:{canTranscribe:()=>boolean, transcribe:(b:Buffer)=>Promise<any>}, mode?:'auto'|'offline'}} o
+ * @param {{brain?:{canTranscribe:()=>boolean, transcribe:(b:Buffer)=>Promise<any>}, mode?:'auto'|'offline', local?:(wav:Buffer)=>Promise<{ok:boolean,text?:string,error?:string}>}} o
  * @returns {Promise<{ok:boolean, text:string, via:string, error?:string, chain?:string[]}>}
  */
 async function transcribe(wav, o = {}) {
   if (!looksLikeWav(wav)) return { ok: false, text: '', via: '', error: 'not a valid recording' }
   const chain = []
+  // 1) the speech model on this PC (Moonshine): private, free and the most accurate offline option
+  if (o.local) {
+    try {
+      const r = await o.local(wav)
+      if (r && r.ok && r.text) return { ok: true, text: r.text, via: 'Moonshine (on this PC)', chain: ['local: ok'] }
+      chain.push('local: ' + ((r && r.error) || 'heard nothing'))
+    } catch (e) {
+      chain.push('local: ' + (e && e.message))
+    }
+  }
   if (o.mode !== 'offline' && o.brain && o.brain.canTranscribe()) {
     const r = await o.brain.transcribe(wav)
     chain.push(...(r.chain || []))

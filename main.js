@@ -1,9 +1,13 @@
 'use strict'
-const { app, BrowserWindow, safeStorage, session, shell, globalShortcut, Menu, Notification, Tray, ipcMain, nativeImage, screen } = require('electron')
+const { app, BrowserWindow, dialog, utilityProcess, safeStorage, session, shell, globalShortcut, Menu, Notification, Tray, ipcMain, nativeImage, screen } = require('electron')
 const fs = require('node:fs')
 const path = require('node:path')
 const autostart = require('./autostart')
-const speech = require('./speech')
+const speechSapi = require('./speech')
+const audioModels = require('./audio/models')
+const audioClient = require('./audio/client')
+const pcm = require('./audio/pcm')
+const voiceOut = require('./voice-out')
 const stt = require('./stt')
 const wakeWord = require('./wake')
 const { createBrain, PRESETS: BRAIN_PRESETS } = require('./brain')
@@ -23,6 +27,7 @@ const DEFAULTS = {
   jarvisSpeaks: true, // replies are spoken aloud (voice turns are always spoken)
   voiceConverse: false, // after he answers a spoken question, listen again for a follow-up
   wakeWord: false, // "Hey Jarvis": always listening for the wake phrase, fully offline
+  neuralVoice: true, // use the natural on-PC voice when its model is installed (else the Windows voice)
   sttMode: 'auto', // 'auto' = Groq Whisper if you have a Groq key, else Windows | 'offline' = Windows only
   voiceName: '', // '' = automatic; otherwise the exact installed Windows voice name
   readNotifications: false, // read new notifications aloud
@@ -37,6 +42,16 @@ const DEFAULTS = {
 
 // ---------------------------------------------------------------- settings
 let settings = { ...DEFAULTS }
+
+// ---------------------------------------------------------------- audio worker (speech model, voice, wake word) and Jarvis's voice
+const audio = audioClient.create({ fork: (p) => utilityProcess.fork(p, [], { serviceName: 'Jarvis audio' }), workerPath: path.join(__dirname, 'audio', 'worker.js'), userDir: () => app.getPath('userData') })
+const speech = voiceOut.create({
+  speech: speechSapi,
+  audio,
+  send: (channel, payload) => win?.webContents.send(channel, payload),
+  ready: () => audioModels.ready('voice'),
+  enabled: () => settings.neuralVoice
+})
 let settingsFile = ''
 let saveTimer = null
 
@@ -121,7 +136,7 @@ function createWindow() {
     skipTaskbar: true,
     title: 'Jarvis',
     icon: iconPath(),
-    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true, spellcheck: false }
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true, spellcheck: false, autoplayPolicy: 'no-user-gesture-required' }
   })
   win.setMenuBarVisibility(false)
   win.on('system-context-menu', (e) => {
@@ -185,6 +200,38 @@ function updateMenuItem() {
   return { label: `Check for updates (v${app.getVersion()})`, click: () => void updater.check() }
 }
 
+/** ask first (what, where from, how big), then download, verify and install the voice models */
+async function offerModels(bundles) {
+  const items = []
+  for (const b of bundles) for (const it of audioModels.missing(b).items) if (!items.some((x) => x.id === it.id)) items.push(it)
+  if (!items.length) {
+    void dialog.showMessageBox(win, { type: 'info', message: 'The voice models are already installed.' })
+    return
+  }
+  const total = items.reduce((n, i) => n + i.bytes, 0)
+  const detail = items.map((i) => `• ${i.title}: ${audioModels.prettyBytes(i.bytes)}\n  ${i.why}. License: ${i.license}\n  from ${new URL(i.url).host}`).join('\n')
+  const r = await dialog.showMessageBox(win, {
+    type: 'question',
+    buttons: ['Download', 'Not now'],
+    defaultId: 0,
+    cancelId: 1,
+    message: `Download voice models (about ${audioModels.prettyBytes(total)})?`,
+    detail: detail + '\n\nEach file is checked against a fixed checksum before it is used. Nothing else is downloaded or sent.'
+  })
+  if (r.response !== 0) return
+  try {
+    for (const it of items) {
+      await audioModels.install(it.id, ({ got, total: t }) => win?.setProgressBar(t ? got / t : -1))
+    }
+    win?.setProgressBar(-1)
+    void dialog.showMessageBox(win, { type: 'info', message: 'Voice models installed.', detail: 'Jarvis now understands you and speaks on this PC.' })
+  } catch (e) {
+    win?.setProgressBar(-1)
+    void dialog.showMessageBox(win, { type: 'error', message: 'Could not install the voice models.', detail: String((e && e.message) || e) })
+  }
+  buildTray()
+}
+
 function menuTemplate() {
   const check = (label, key) => ({ label, type: 'checkbox', checked: !!settings[key], click: (i) => update({ [key]: i.checked }) })
   return [
@@ -208,6 +255,8 @@ function menuTemplate() {
         ...speechVoices.map((v) => ({ label: `${v.short} (${v.gender})`, type: 'radio', checked: settings.voiceName === v.name, click: () => pickVoice(v.name) }))
       ]
     },
+    check('Natural voice (on this PC)', 'neuralVoice'),
+    { label: 'Download voice models…', click: () => void offerModels(['stt', 'voice']) },
     { type: 'separator' },
     check('Notification inbox', 'inbox'),
     check('Read notifications aloud', 'readNotifications'),
@@ -417,6 +466,17 @@ ipcMain.on('brainwin:link', (e, url) => {
 // ---------------------------------------------------------------- voice: microphone audio in, text out
 // what Windows' offline recogniser is told to expect (it also takes free dictation)
 const STT_PHRASES = stt.buildPhrases({})
+/** the speech model on this PC, when it is installed (tests use the fake provider path unless they ask for the real model) */
+function localStt() {
+  if (process.env.SPIDEY_TEST && !process.env.JARVIS_TEST_LOCAL_STT) return null
+  if (!audioModels.ready('stt')) return null
+  return async (wav) => {
+    const p = pcm.wavToFloat32(wav)
+    if (!p) return { ok: false, error: 'unreadable recording' }
+    const r = await audio.transcribe(p.rate === 16000 ? p.samples : pcm.resample(p.samples, p.rate, 16000))
+    return { ok: true, text: r.text }
+  }
+}
 ipcMain.handle('stt:transcribe', async (e, audio) => {
   if (e.sender !== win?.webContents) return { ok: false, text: '', error: 'not allowed' }
   let buf
@@ -425,7 +485,9 @@ ipcMain.handle('stt:transcribe', async (e, audio) => {
   } catch {
     return { ok: false, text: '', error: 'bad audio' }
   }
-  return stt.transcribe(buf, { brain, mode: settings.sttMode, phrases: STT_PHRASES })
+  const res = await stt.transcribe(buf, { brain, mode: settings.sttMode, phrases: STT_PHRASES, local: localStt() })
+  if (process.env.JARVIS_DEBUG) console.log('[stt]', JSON.stringify({ via: res.via, chain: res.chain, text: res.text }))
+  return res
 })
 ipcMain.handle('voice:info', (e) => (e.sender === win?.webContents ? { cloud: !!brain && brain.canTranscribe(), mode: settings.sttMode, converse: settings.voiceConverse } : null))
 
@@ -477,6 +539,9 @@ ipcMain.on('speak', (e, text, opts) => {
     tag: typeof o.tag === 'string' ? o.tag.slice(0, 140) : undefined
   })
 })
+ipcMain.on('tts:event', (e, ev) => {
+  if (e.sender === win?.webContents) speech.played(ev)
+})
 ipcMain.on('speak:stop', (e) => {
   if (e.sender === win?.webContents) speech.stop()
 })
@@ -520,6 +585,7 @@ if (!app.requestSingleInstanceLock()) {
   app.on('second-instance', () => showWindow())
   app.whenReady().then(() => {
     app.setAppUserModelId(APP_ID)
+    audioModels.setUserDir(app.getPath('userData'))
     loadSettings()
     createWindow()
     buildTray()
@@ -535,6 +601,7 @@ if (!app.requestSingleInstanceLock()) {
     })
     updater.start()
     speech.setVoice(settings.voiceName)
+    audio.onCrash((code) => console.error('audio worker crashed, exit', code))
     initBrain()
     const ours = (url) => typeof url === 'string' && url.startsWith('file://')
     const allowed = (permission, details) => permission === 'media' && (!details || !details.mediaTypes || details.mediaTypes.every((t) => t === 'audio'))
@@ -566,6 +633,7 @@ if (!app.requestSingleInstanceLock()) {
     updater.dispose()
     speech.stop()
     wake.stop()
+    audio.stop()
     quitting = true
   })
   app.on('window-all-closed', () => {

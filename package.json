@@ -9,7 +9,7 @@
   "scripts": {
     "start": "electron .",
     "dist": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dist-local.ps1",
-    "test:unit": "node scripts/jarvis-test.js && node scripts/notifications-test.js && node scripts/autostart-test.js && node scripts/updater-test.js && node scripts/speech-test.js && node scripts/reader-test.js && node scripts/brain-prompt-test.js && node scripts/brain-test.js && node scripts/voice-core-test.js && node scripts/stt-test.js && node scripts/wake-test.js"
+    "test:unit": "node scripts/jarvis-test.js && node scripts/notifications-test.js && node scripts/autostart-test.js && node scripts/updater-test.js && node scripts/speech-test.js && node scripts/reader-test.js && node scripts/brain-prompt-test.js && node scripts/brain-test.js && node scripts/voice-core-test.js && node scripts/stt-test.js && node scripts/audio-test.js && node scripts/voice-out-test.js && node scripts/wake-test.js"
   },
   "devDependencies": {
     "electron": "44.7.2",
@@ -33,6 +33,8 @@
       "brain-prompt.js",
       "karen-llm.js",
       "speech.js",
+      "voice-out.js",
+      "audio/**/*",
       "stt.js",
       "wake.js",
       "notifications.js",

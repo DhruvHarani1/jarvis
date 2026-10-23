@@ -1,0 +1,376 @@
+# Jarvis v2: plan
+
+Status: **draft for approval**. Nothing in this plan has been built yet. Evidence and sources are in `RESEARCH.md`.
+
+## 1. Summary
+
+Jarvis today is a good voice shell with no hands: it hears you, thinks with free LLM keys, speaks with robotic Windows voices, and reads notifications aloud. v2 keeps that shell and adds what is missing:
+
+1. **Better voice**, fully local by default: wake word, VAD, STT and neural TTS from one Apache-2.0 library (`sherpa-onnx`), no Python.
+2. **Hands**: a permissioned tool layer so Jarvis can open apps, set volume, find files, manage reminders and clipboard, with confirmation for risky things, an audit log and undo where possible. MCP for optional extras (mail, calendar).
+3. **Memory**: short-term conversation and long-term facts in local SQLite.
+4. **A small free-LLM router** built from the good ideas in FreeLLMAPI (MIT, with attribution), not the whole app.
+5. **Release**: signed-off installer, auto-update, resource budget that respects a PC sitting at 97% RAM.
+
+Recommendation on the question that started this: **do not run FreeLLMAPI as part of Jarvis.** Port its ideas (option b). Running it yourself and pointing Jarvis at it keeps working as an advanced option (option a). Reasons in section 6.
+
+## 2. Goals and non-goals
+
+### Goals
+
+- Voice-first on Windows 10/11. Say "Hey Jarvis", ask or command, hear a natural voice answer, first spoken word in about 1.5 s on a normal turn (target, to be measured).
+- Useful actions on the PC, safe by default.
+- Works with **zero paid services**. Works offline for voice, timers, reminders, app control and notifications; only the LLM needs internet (or Ollama).
+- Private by default: mic only on when the indicator says so; nothing leaves the PC unless the user picked a cloud provider; keys encrypted with DPAPI.
+- Small: low idle memory, heavy parts lazy-loaded and optional.
+- One developer plus Claude can maintain it: plain JavaScript, few dependencies, every module testable without a network or a microphone.
+
+### Non-goals (v2)
+
+- No arbitrary "run any shell command" tool. No computer-vision click-anything agent.
+- No multi-user, no cloud account, no server component, no phone app.
+- No always-on cloud streaming of audio.
+- No mac/Linux support (the code should not gratuitously block it, but nothing is tested there).
+- No custom wake-word model training, no voice cloning.
+- Not a FreeLLMAPI replacement or fork.
+
+## 3. Requirements and constraints
+
+| Area | Requirement |
+|------|-------------|
+| Users | One person (Dhruv), one Windows PC; maybe published later for others |
+| Latency | End of speech to first spoken word: ≤ 1.5 s typical on a fast provider (target) |
+| Idle RAM | Tray only, wake word off: ≤ 150 MB total across processes (target; **measure in M0**) |
+| Wake word on | ≤ +40 MB, ≤ 2% CPU (target) |
+| Active voice session | ≤ 600 MB peak with neural TTS loaded; models unload after ~2 min idle (target) |
+| Disk | Installer ≤ 150 MB. Voice models (100-300 MB) are downloaded on first use with the user's OK, not bundled |
+| Privacy | See section 8 |
+| Reliability | Any provider/model can fail: failover or a spoken "I can't reach my brain" within 10 s |
+| Team | 1 developer + Claude; no build step beyond Electron packaging |
+
+## 4. Architecture
+
+### 4.1 Processes
+
+```
+┌───────────────────────── Electron app ──────────────────────────┐
+│                                                                  │
+│  Renderer (UI + mic)           Main process (orchestrator)       │
+│  - tray popup / transcript     - session state machine           │
+│  - getUserMedia + worklet      - agent loop (LLM + tool calls)   │
+│  - confirm dialogs             - provider router + key store     │
+│        │  16 kHz PCM / events  - tool registry + permissions      │
+│        ▼                       - memory (node:sqlite)            │
+│  ┌───────────────┐   IPC       - audit log, scheduler            │
+│  │ Audio worker  │◄───────────►- notification inbox + reader     │
+│  │ (utilityProc) │             - updater, autostart              │
+│  │ sherpa-onnx:  │                  │                            │
+│  │ KWS, VAD,     │                  ├── Windows actions (PowerShell/Win32, short-lived)
+│  │ STT, TTS      │                  ├── MCP client (opt-in stdio servers)
+│  └───────────────┘                  └── HTTPS to chosen LLM providers
+└──────────────────────────────────────────────────────────────────┘
+```
+
+Why a separate **audio worker** (Electron `utilityProcess`): native model code crashes or leaks without taking the app down, and the whole process can be killed to free model RAM when idle. The renderer stays tiny and can be destroyed when the window is hidden; the wake word then runs in the worker only.
+
+### 4.2 Voice turn (data flow)
+
+```
+mic ──► worklet (16k PCM) ──► [Audio worker]
+                               KWS (always-on, only if enabled)  ── "hey jarvis" ─┐
+                               (or hotkey / mic button) ────────────────────────┤
+                                                                                 ▼
+                               VAD segments speech ──► streaming STT ──► partial/final text
+                                                                                 │
+                         fast-path intents (time, timer, volume, "stop") ◄───────┤  no LLM needed
+                                                                                 ▼
+                         Main: build context (system prompt + memory + history + tool schemas)
+                                                                                 │
+                         Router picks provider/key ──► stream tokens             │
+                                   │            tool_calls ──► permissions ──► tool ──► result ─┐
+                                   │                                                            │ (loop, max 5 steps)
+                                   ▼◄───────────────────────────────────────────────────────────┘
+                         sentence splitter ──► TTS (stream sentence by sentence) ──► speakers
+                         barge-in: new speech or hotkey during playback ⇒ stop TTS, cancel request
+```
+
+### 4.3 Components
+
+| Component | Responsibility | Notes |
+|-----------|----------------|-------|
+| Session manager | State machine: idle → listening → thinking → acting → speaking; barge-in; one active turn | Pure logic, fully unit-testable |
+| Audio worker | KWS, VAD, STT, TTS through `sherpa-onnx-node` | Lazy model load; exposes `transcribe stream`, `speak(sentence)`, `stop()` |
+| TTS fallback | Existing `speech.js` SAPI voices | Zero-download default until a neural voice is installed |
+| Router | Provider catalog, key pool, quota ledger, cooldowns, streaming with first-token timeout, tool-call rescue | Section 6 |
+| Agent loop | Calls the router with tools, executes tool calls through permissions, feeds results back, bounded steps and tokens | Owns the system prompt |
+| Tool registry | Typed tools with JSON-schema args, risk tier, `run()`, optional `undo()` | Section 5 |
+| Permission engine | Decides allow / ask / deny from tier, policy and taint; produces confirm prompts | Section 5 |
+| Audit log | Append-only JSONL: time, tool, args (redacted), decision, result, undo handle | Viewer in UI |
+| Memory | Conversation history, facts, notes, reminders in `node:sqlite` with FTS5 | Section 7 |
+| Scheduler | Reminders and timers, persisted, survive restarts | Fires toast + voice |
+| MCP client | Optional external tools via `@modelcontextprotocol/sdk` | Off by default; each server is opt-in and sandboxed by tier |
+| Notification inbox + reader | Existing, kept | Contents never go to an LLM prompt |
+| UI | Tray menu, small window with transcript, status orb, confirm dialog, key manager, audit viewer | Plain HTML/CSS/JS |
+| Updater / autostart / DPAPI store | Existing, kept | |
+
+### 4.4 Storage
+
+- `settings.json` (existing pattern) for preferences.
+- `keys.bin`: provider keys, encrypted with Electron `safeStorage` (DPAPI). Not saved if encryption is unavailable (existing rule, keep).
+- `jarvis.db` (`node:sqlite`): `messages`, `facts` (+FTS5), `reminders`, `quota_ledger`, `audit` (or JSONL file; decide in M2), `schema_version`. Simple numbered migrations.
+- Models in `%LOCALAPPDATA%\Jarvis\models\`, downloaded on demand with checksum.
+
+## 5. Tool and permission layer
+
+### 5.1 Tool definition
+
+```js
+{
+  name: 'set_volume',
+  description: 'Set system volume 0-100',
+  schema: { type: 'object', properties: { level: { type: 'integer', minimum: 0, maximum: 100 } }, required: ['level'] },
+  tier: 'T1',                       // T0 read | T1 reversible local | T2 consequential | T3 never
+  run: async (args, ctx) => ({ spoken: 'Volume 30', undo: { tool: 'set_volume', args: { level: previous } } })
+}
+```
+
+Every call is schema-validated before it runs. Tools never get a shell string; they call fixed PowerShell scripts or Win32 APIs with validated parameters (the existing speaker process already passes text as base64 on stdin, never on a command line; keep that rule).
+
+### 5.2 Risk tiers
+
+| Tier | Meaning | Examples | Default |
+|------|---------|----------|---------|
+| T0 | Read-only, local | time, battery, CPU/RAM, list reminders, read clipboard, search files by name | Allow, log |
+| T1 | Reversible local change | open app, set volume, mute, media keys, create timer/reminder, write clipboard, open URL in default browser | Allow, log, offer undo |
+| T2 | Consequential or leaves the PC | move/rename/delete files (Recycle Bin only), send mail or message (MCP), close an app with unsaved work, anything from an untrusted MCP server | **Ask each time**: on-screen button and spoken yes/no |
+| T3 | Never | arbitrary shell, registry edits, disk format, credential or key access, disabling security software | Not registered |
+
+Policy is user-adjustable (stricter only for T2/T3 in v2; relaxing T2 to "allow" is a later, explicit setting per tool).
+
+### 5.3 Rules that matter for a voice assistant
+
+- **Untrusted content taint.** Text from notifications, web pages, files, MCP results and email can contain instructions. After any untrusted text enters the context, T2 tools require a **button click on screen** (spoken "yes" is not enough) and the confirm dialog shows the exact arguments. Notification contents are not placed in prompts at all (existing rule, keep).
+- **Voice confirmation is weak** (someone else's voice, TV, misrecognition). So T2 voice yes only counts if the confirm text was read back and the mic heard "yes" within 8 s of the prompt; otherwise cancel.
+- **Path sandbox.** File tools only work under user-approved roots (default: Desktop, Documents, Downloads). Paths are normalized and checked after resolving `..`, junctions and symlinks. Delete means Recycle Bin via the shell API, which is undoable.
+- **Step and cost limits.** Max 5 tool steps per turn, max 1 T2 per turn without re-asking, wall-clock cap per turn.
+- **Audit log + undo.** Every call is logged (tool, redacted args, decision, outcome). "Undo that" runs the last undo handle. Undo exists for volume, mute, file move/rename, delete (restore from Recycle Bin), reminders; it does not exist for sent messages, and the UI says so before they are sent.
+- **Mic indicator.** The orb shows listening state; with wake word on, a distinct icon state shows an always-on local listener (existing behaviour, keep).
+
+### 5.4 MCP
+
+Optional. A server is added by the user with a command line, shown in full before first start, and each MCP tool is mapped to a tier (default T2 until the user lowers it per tool). Servers are started lazily and stopped after idle, because each is a separate process. No MCP server is bundled.
+
+## 6. LLM provider router and FreeLLMAPI
+
+### 6.1 What we build (option b)
+
+A `router/` module of ~400-800 lines, taking these ideas from FreeLLMAPI (MIT; attribution in `NOTICE`, header kept on any copied function):
+
+| Idea | Jarvis version |
+|------|----------------|
+| Provider catalog with per-model limits and capability flags | Small `catalog.json`: 6-8 vetted providers, each model has `rpm, rpd, tpm, tpd, tools, stream, ctx`. Hand-maintained, tested. Observed limits from 429 bodies override it. |
+| Per-key RPM/RPD/TPM/TPD ledger with UTC-day reset | In-memory sliding windows persisted to `quota_ledger` |
+| Cooldown ladder and `Retry-After` parsing | Copy/adapt the parser (seconds, HTTP date, "try again in 1m26s") |
+| Failover chain, key rotation | Existing `brain.js` chain, now ordered by score |
+| Health score | Simple: exponential-decay success rate × latency score. **No Thompson-sampling bandit** (overkill for ≤ 6 keys) |
+| First-token timeout from observed TTFB | Per model P95 TTFB + buffer, capped; voice needs fast failover |
+| Tool-call rescue | Adapt `tool-call-rescue.ts` dialect parsers (schema-gated) |
+| `<think>` stripping | Adapt |
+
+Our own additions for voice: prefer low-TTFB models for conversation turns, prefer tool-capable models when tools are in the request, **provider allowlist** (only well-known providers; lesser-known relays are never added), and a privacy class per provider (e.g. "free tier may train on data" shown in the key manager; Gemini free is flagged).
+
+### 6.2 Options compared
+
+| | (a) External | (b) Port ideas **(recommended)** | (c) Sidecar |
+|--|--|--|--|
+| Code in Jarvis | ~0 (base URL + key) | 400-800 lines | Launcher + packaging + health |
+| Extra RAM | A whole second app/process (README claims ~40 MB for bare server; desktop build adds Chromium; **measure**) | None | Same as (a), plus we ship it |
+| Catalog freshness | Free feed lags 30 days; premium $19/yr is the owner's choice and not required | Manual, small, we control | Same as (a) |
+| Privacy control | Router may pick providers we never vetted | Allowlist enforced by us | Same as (a) |
+| Failure modes | Two systems to debug | One | Two, plus version drift |
+| Verdict | Keep working as an optional custom provider | Default | Skip |
+
+### 6.3 Budget reality
+
+A voice turn is ~1.5-3k tokens in, ~0.1-0.3k out. 100 turns a day is roughly 7.5M tokens a month, which is less than any single free tier. The binding limits are **requests per minute/day and latency**, not tokens, so the plan is: Groq as primary (fast, tool-capable, also Whisper cloud STT if wanted), Cerebras second, Gemini third, OpenRouter `:free` and NVIDIA as depth, Ollama last. See the table in `RESEARCH.md` section 3. Free-tier numbers there are a snapshot and must be re-verified when `catalog.json` is written.
+
+The user pastes their own keys; Jarvis never creates accounts or shares keys, and does not try to avoid any provider's limits or terms.
+
+## 7. Memory
+
+- **Short-term**: last N turns of the current session sent to the LLM (token-budgeted). Older turns summarized by the LLM when the session ends or exceeds the budget.
+- **Long-term**: `facts` table (text, tags, source, created, last_used). Jarvis stores a fact only when the user says "remember ..." or confirms ("Should I remember that?"). Retrieval: FTS5 keyword search over facts and notes, top-k injected into the prompt. No embeddings in v2 (saves RAM and a provider dependency); revisit if recall is poor.
+- **User control**: "what do you remember", "forget X", "forget everything", plus a viewer/exporter in the UI. Memory never contains notification contents, secrets or keys; a filter rejects strings that look like keys/passwords.
+- **Privacy**: memory text that is sent to a cloud LLM is only what retrieval selects for the current turn, and the key manager shows which provider you are using.
+
+## 8. Privacy and security model
+
+- Mic: open only while listening (orb on) or when the optional local wake-word listener is enabled and visibly indicated. Audio is processed locally by default; Groq cloud STT is an explicit opt-in.
+- Network: only to LLM providers the user keyed, model download hosts (checksummed, with user consent), and the GitHub update feed. No telemetry.
+- Keys: DPAPI via `safeStorage`; never logged; error messages redacted (adapt FreeLLMAPI's log-redaction idea).
+- Electron hardening: `contextIsolation`, no `nodeIntegration`, strict IPC sender checks (existing code already checks sender; keep), CSP, no remote content in renderers, `will-navigate` blocked.
+- Prompt injection: taint rule (5.3), tools cannot exceed their tier, tool results are data, system prompt says so, and nothing sensitive is reachable by a tool anyway (no T3).
+- Supply chain: few dependencies (`sherpa-onnx-node`, `@modelcontextprotocol/sdk`, `electron-updater`), versions pinned, lockfile committed, `npm audit` in the release checklist, model downloads verified by SHA-256.
+
+## 9. Architecture decisions (ADRs)
+
+### ADR-1: Keep Electron (not Tauri, not native)
+
+- **Context:** RAM-tight PC; existing, tested Electron app; user and Claude work in JavaScript.
+- **Options:** Keep Electron 44. Rewrite in Tauri (Rust + WebView2). Pure native tray app.
+- **Decision:** Keep Electron. Mitigate with: no window means no renderer (tray + utility process only), lazy model loading, destroying the renderer when hidden, audio worker kill on idle.
+- **Trade-offs:** Tauri could save roughly 100+ MB at idle (**not measured**), but costs a Rust rewrite of everything with no payoff in features, and splits the toolchain. sherpa-onnx has Tauri demos, so the door stays open.
+- **Revisit when:** measured idle memory in M0/M5 exceeds the budget and cannot be fixed with the mitigations.
+
+### ADR-2: Node-only audio stack (sherpa-onnx) instead of a Python sidecar
+
+- **Options:** (1) `sherpa-onnx-node` addon. (2) Python sidecar with faster-whisper, Piper, openWakeWord (RealtimeSTT-style). (3) whisper.cpp + separate TTS binaries.
+- **Decision:** (1), in a `utilityProcess`.
+- **Why:** one Apache-2.0 dependency for KWS, VAD, STT and TTS; prebuilt Windows binaries (~23 MB package); no Python install for end users; no GPL (piper1-gpl and openWakeWord's non-commercial models avoided).
+- **Trade-offs:** fewer model choices than the Python world; we depend on one maintainer group (active: pushed 2026-10-23). N-API addon inside Electron needs an M0 spike to confirm.
+- **Fallback if the spike fails:** run sherpa-onnx's own C++ CLI/WebSocket server as a child process (same models, same API shape).
+- **Revisit when:** accuracy on the user's voice is bad on every sherpa-supported model (then add whisper.cpp as an optional component).
+
+### ADR-3: Default models
+
+- **TTS:** Kokoro via sherpa-onnx as the recommended voice (download on first run); Piper-format small voice as the light option; SAPI stays as the instant zero-download fallback. Check each voice's license before listing it.
+- **STT:** decide in M1 by a benchmark on the user's own recorded phrases: Moonshine (tiny, streaming), a streaming zipformer, Whisper-base via sherpa. Pick the best WER within the RAM budget. Groq Whisper stays as optional cloud STT.
+- **Wake word:** sherpa-onnx keyword spotter with text keywords "hey jarvis" / "okay jarvis". Needs false-accept tuning (M1 acceptance test).
+
+### ADR-4: Agent and tool protocol
+
+- **Options:** (1) In-process tool registry using the OpenAI function-calling format, MCP client for extras. (2) MCP for everything (even built-in tools). (3) Prompt-parsed JSON commands (what `brain-prompt.js` does today).
+- **Decision:** (1).
+- **Why:** built-in tools need tight permission control and tiny latency, MCP adds a process per server. OpenAI tool format is what every free provider speaks. Prompt-parsed JSON is fragile; tool-call rescue covers the models that print tool calls as text.
+- **Trade-offs:** two paths (native and MCP) to keep consistent. Both go through the same permission engine, so the model does not know the difference.
+
+### ADR-5: Own router, port ideas (FreeLLMAPI option b)
+
+See section 6. **Revisit when:** more than ~8 providers are in regular use, or catalog upkeep becomes a chore (then option a becomes more attractive).
+
+### ADR-6: Plain JavaScript with JSDoc types, `node:sqlite`
+
+- **Decision:** CommonJS JS (as now) with `// @ts-check` and JSDoc on public module functions; no bundler. SQLite through built-in `node:sqlite` (Node 24 ships in Electron 44, **verify** in M0), avoiding a native `better-sqlite3` rebuild.
+- **Trade-offs:** weaker typing than TypeScript; zero build step, which suits one developer.
+
+### ADR-7: Fast path before the LLM
+
+Deterministic intents ("what time is it", "set a timer for 5 minutes", "volume 30", "stop", "what did I miss") are answered locally without calling an LLM: faster, free, offline. The LLM is used when no intent matches.
+
+## 10. Code: keep, change, delete (file by file)
+
+Current repo: Electron 44, ~5.6k lines. "Karen" is the old Spidey Sense name still present in code.
+
+| File | Decision | What happens |
+|------|----------|--------------|
+| `main.js` (574) | **Refactor** | Keep window, tray, settings, IPC sender checks. Split into `app/` modules (window, tray, settings, ipc). Remove Spidey leftovers. |
+| `preload.js`, `preload-brain.js` | **Keep, extend** | Add new IPC channels; keep the narrow-API pattern. |
+| `brain.js` (582) | **Evolve into `router/`** | Keep: presets, DPAPI key store, cooldown, failover, streaming, injected fetch/clock/storage (good test design). Add: ledger, catalog, TTFB timeout, tool-call support. Rename Karen strings. |
+| `brain-prompt.js` (201) | **Rewrite mostly** | Keep sanitizing and the "only a short status line goes to the model" rule. Delete `ALLOWED_ACTIONS` (Spidey-only actions: locker, equip, bugle, edith, capture, collapse, opacity...), replaced by the tool registry. |
+| `karen-llm.js` (115) | **Delete** | Ollama becomes a normal provider in the router. |
+| `speech.js` (318) | **Keep as fallback** | SAPI TTS with persistent PowerShell speaker. Becomes the zero-download fallback behind a common `Voice` interface. |
+| `stt.js` (140) | **Keep, demote** | Groq Whisper path stays as cloud option; SAPI offline STT is removed once local sherpa STT passes the M1 test. |
+| `wake.js` (172) | **Replace** | Delete after sherpa KWS passes M1 tests; keep until then. |
+| `notifications.js` (163) | **Keep** | Works; privacy model is right. |
+| `autostart.js`, `updater.js` | **Keep** | Tested. |
+| `renderer/index.html`, `style.css`, `jarvis.js` | **Rewrite** | New small UI: orb, transcript, confirm dialog. Reuse styles that survive. |
+| `renderer/voice.js` (236) | **Rewrite** | Capture only; stream PCM to the audio worker. VAD moves out. |
+| `renderer/voice-core.js` (125) | **Trim** | Keep resample/WAV helpers if still used; delete energy VAD once sherpa VAD is in. |
+| `renderer/pcm-worklet.js` | **Keep** | |
+| `renderer/inbox.js`, `reader.js` | **Keep** | |
+| `renderer/brain.html/css/js` | **Keep, rename** | Becomes the Providers/Keys window; add allowlist, privacy class and usage display. |
+| `scripts/*-test.js` | **Keep, adapt** | One test file per surviving module; rename with the code. Add new suites per milestone. |
+| `scripts/e2e.js`, `make-fake-mic.js`, `make-fixtures.ps1` | **Keep, extend** | Fake provider gains tool-call responses; fake mic gains command phrases. |
+| `scripts/dist-local.ps1`, `build/installer.nsh` | **Keep** | Review in M5. |
+| `scratch/*.js` (Spidey cut scripts, `fixplan.js`...) | **Delete locally** | Untracked leftovers from the split; git-ignored. |
+| `README.md` | **Rewrite in M5** | |
+
+Nothing is deleted until the user approves this plan, and deletions happen in M0 with the tests green before and after.
+
+## 11. Testing strategy
+
+- **Unit** (fast, no network, no mic): every module takes injected `fetch`, clock, storage, spawn (current style). New suites: router (ledger, cooldown, failover, tool-call rescue fixtures), permissions (table-driven: every registered tool × tier × taint state), path sandbox (traversal, junction, UNC, case, long paths), scheduler, memory, fast-path intents, agent loop (scripted fake LLM).
+- **Golden audio**: a few recorded WAVs of the user's voice and synthetic ones; assert WER below a threshold for STT, wake word fires on "hey jarvis" and not on 10 near-miss phrases and 5 minutes of TV-like speech.
+- **E2E** (`scripts/e2e.js` pattern): launch the real app with fake mic WAV, fake provider server that streams text and tool calls, speech log in dry-run mode; assert sentence-by-sentence speech, that a T2 action waits for confirmation and a click proceeds, audit log written, undo works.
+- **Security tests**: injected text in a fake notification and fake web result tries to trigger a T2 tool; assert it needs the click.
+- **Resource tests**: script that records process working set at idle, wake on, and during a voice turn, and fails if it exceeds the budget by > 20%.
+- **Release checklist** (manual): clean-VM install, upgrade from previous version, mic permission denied path, offline path, no-keys path.
+
+## 12. Milestones
+
+Each milestone ends with tests green and a short demo script. Rough sizes are for one developer with Claude, in focused sessions.
+
+### M0: Baseline cleanup and spikes (about 1-2 sessions)
+
+- Rename Karen leftovers, delete dead Spidey actions, delete local `scratch/` junk, split `main.js`, add `NOTICE`.
+- Record baseline: `npm run test:unit` and `node scripts/e2e.js` pass; measure idle/active memory of the current app.
+- Spike A: `sherpa-onnx-node` loads in Electron 44 `utilityProcess`; runs VAD on a WAV. Spike B: `node:sqlite` works in Electron main. Spike C: measure RAM of Kokoro TTS and a streaming STT model loaded.
+- **Acceptance:** existing tests green; spike results written to `RESEARCH.md`; go / no-go on ADR-2 recorded; baseline numbers recorded. If spike A fails, switch to the sherpa child-process fallback before M1.
+
+### M1: Better voice (2-4 sessions)
+
+- Audio worker with VAD, streaming STT, KWS, TTS; `Voice` interface with SAPI fallback; model downloader with checksums and consent; barge-in.
+- Benchmark STT models on the user's recorded phrases and choose the default.
+- **Acceptance:** (1) 20 recorded phrases: WER under agreed threshold (set after benchmark, target ≤ 10%). (2) Wake word fires ≥ 9/10 on "hey jarvis", ≤ 1 false trigger in 30 minutes of normal speech/TV (manual). (3) First spoken word ≤ 1.5 s after end of speech on a fast provider. (4) Saying something during playback stops speech within 300 ms. (5) Idle with wake word on stays within the budget. (6) Works fully offline except the LLM call. (7) Old SAPI STT/wake code deleted, tests updated.
+
+### M2: Tools, actions and permissions (3-5 sessions)
+
+- Tool registry, permission engine, audit log, undo, confirm UI; agent loop with bounded steps.
+- First tools: `open_app`, `open_url`, `set_volume`/`mute`, media keys, `set_timer`/`add_reminder`/`list_reminders`, `read_clipboard`/`write_clipboard`, `find_files`, `open_file`, `move_file` (T2), `delete_file` (T2, Recycle Bin), `system_status`, `read_notifications_summary` (local only).
+- Fast-path intents for the common ones.
+- Optional MCP client behind a setting, with one example server tested.
+- **Acceptance:** (1) "Open Notepad", "volume 30", "remind me in 10 minutes to stand up" work by voice. (2) "Delete the file X" shows the exact path, needs click plus yes, goes to Recycle Bin, "undo" restores. (3) Prompt-injection test cannot trigger a T2 tool without a click. (4) Path traversal tests all denied. (5) Audit log shows every call; viewer works. (6) No T3 tool exists (test enumerates the registry). (7) Tool loop stops at max steps.
+
+### M3: Memory (1-2 sessions)
+
+- SQLite schema + migrations, history, facts with FTS5, session summaries, memory commands, viewer/export, secret filter.
+- **Acceptance:** "Remember my sister's name is Asha" then, after an app restart, "what's my sister's name" answers correctly; "forget that" removes it; a string that looks like an API key is refused; memory survives updates; DB migration test from v1 to v2 schema.
+
+### M4: Free-LLM router and FreeLLMAPI option (2-3 sessions)
+
+- `router/` with catalog, ledger, cooldowns, TTFB timeouts, tool-call rescue, allowlist, privacy labels, usage view. `NOTICE` attribution.
+- Docs for option (a): how to add a locally running FreeLLMAPI as a custom provider (with the privacy warning that its router may choose providers outside the allowlist).
+- **Acceptance:** (1) Fake-provider tests: 429 with `Retry-After` benches the key and fails over within one turn; a hung first token fails over in ≤ TTFB budget; daily-limit exhaustion skips a key until UTC midnight; tool-call-as-text fixtures are rescued for 4 dialects. (2) Real smoke test with the user's own keys (manual): a turn succeeds when the top provider is blocked. (3) Pointing at a local FreeLLMAPI instance works as a custom provider (manual, only if the user runs it). (4) No key ever appears in logs (grep test).
+
+### M5: Packaging, update and release (1-2 sessions)
+
+- Installer review, auto-update test across two versions, first-run wizard (mic, optional models, keys), README, privacy page, resource-budget script in the release checklist. Publishing to GitHub only when the user says so.
+- **Acceptance:** clean Windows VM install works; upgrade from previous build keeps settings/keys/memory; budget script within limits; release checklist signed off; license/NOTICE audit passes (no GPL, no non-commercial models bundled).
+
+## 13. Risks
+
+| Risk | Likelihood | Impact | Mitigation |
+|------|-----------|--------|------------|
+| `sherpa-onnx-node` does not work well inside Electron | Low-med | High | M0 spike; fallback to sherpa child process |
+| Neural TTS or STT uses too much RAM on the 97%-full PC | Medium | High | Measure in M0; small voice option; unload on idle; SAPI fallback always works |
+| Wake word false triggers or misses | Medium | Medium | Tune threshold; acceptance test; hotkey always available; user can disable |
+| STT accuracy poor on the user's accent | Medium | Medium | Benchmark on real recordings; Whisper option; Groq cloud STT opt-in |
+| Prompt injection via notifications/web/MCP | Medium | High | Taint rule, tiers, no T3, no notification text in prompts, click-to-confirm |
+| Voice confirmation spoofed or misheard | Medium | Medium | T2 needs on-screen click when tainted; read-back; 8 s window |
+| Free tiers change or vanish | High | Medium | Catalog is data; observed limits override; multiple providers; Ollama; clear error spoken |
+| Free provider privacy (Gemini free may train on data) | Certain | Medium | Privacy label in key manager; user picks; allowlist; no sensitive local data in prompts |
+| FreeLLMAPI changes API or license | Low | Low | We only copy small MIT parts with attribution; option (a) is a plain OpenAI endpoint |
+| Scope creep (this is a big wish list) | High | Medium | Milestones are independent releases; M2 tool list is the cap |
+| Native module/ASAR packaging problems | Medium | Medium | `asarUnpack` for the addon, tested in M5 on a clean VM |
+| Microphone/privacy perception | Low | Medium | Visible indicator, local-first, privacy page |
+
+## 14. What I would revisit as it grows
+
+- Embeddings for memory once facts exceed a few thousand.
+- Whisper or a larger STT as an optional component if accuracy is the top complaint.
+- Tauri if memory is still too high after M5.
+- A plugin/skills format (Goose recipes, Leon skills as inspiration) once there are more than ~20 tools or someone else wants to add one. v2 deliberately keeps tools in-repo.
+- Proactive features (morning brief, "you missed a call") after the permission model has proved itself.
+- Screen understanding / computer use: only with a new security review.
+
+## 15. Open questions for Dhruv
+
+1. **Approve overall direction?** Keep Electron, sherpa-onnx for voice, own router with FreeLLMAPI ideas (option b), FreeLLMAPI optional as an external provider.
+2. **Delete vs refactor:** OK to follow the file-by-file table in section 10 (refactor and delete in M0, not a blank-slate rewrite)?
+3. **Languages and accent:** only English, or also Hindi/Gujarati? This changes the STT and TTS model choice a lot.
+4. **Voice quality vs RAM:** is a ~100-300 MB downloaded neural voice acceptable on this PC, or should the default be the smaller Piper voice?
+5. **Action list:** is the M2 tool list right? Anything you most want (WhatsApp, calendar, mail, YouTube/Spotify control, window management)? Mail/calendar/messages would come through MCP and be T2.
+6. **Providers:** which free keys do you already have (Groq, Gemini, NVIDIA, OpenRouter, others)? Any provider you want excluded?
+7. **Name and branding:** keep "Jarvis" (a Marvel-owned name; fine for a private project, a concern if published) or pick a distinct public name?
+8. **Publishing:** keep local only for now, or plan a GitHub repo and releases at M5?
+9. **Wake word always-on:** acceptable default-off (current) or default-on after setup?

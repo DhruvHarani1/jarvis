@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('jarvis', {
   brainChat: (text, ctx, opts) => ipcRenderer.invoke('brain:chat', text, ctx, opts),
   brainReset: () => ipcRenderer.send('brain:reset'),
   openBrain: () => ipcRenderer.send('brain:open'),
+  openAccounts: () => ipcRenderer.send('accounts:open'),
   onBrainDelta: on('brain:delta'),
   transcribe: (audio) => ipcRenderer.invoke('stt:transcribe', audio),
   voiceInfo: () => ipcRenderer.invoke('voice:info'),

@@ -32,7 +32,7 @@ function createRuntime({ audit, confirm, powerMode = () => false, disabled = () 
     tools.set(tool.name, { describe: (a) => JSON.stringify(a), ...tool })
   }
 
-  const available = (t) => !disabled().includes(t.name) && (t.tier !== 'T3' || powerMode())
+  const available = (t) => !disabled().includes(t.name) && (t.tier !== 'T3' || powerMode()) && (!t.enabled || t.enabled()) // enabled(): a tool that needs a connected account hides itself until there is one
 
   /** the list handed to the language model (OpenAI function-calling format); a tool the user switched off is not even shown */
   function specs() {
@@ -131,6 +131,7 @@ function createRuntime({ audit, confirm, powerMode = () => false, disabled = () 
     call,
     undo,
     has: (n) => tools.has(n),
+    isAvailable: (n) => tools.has(n) && available(tools.get(n)),
     get: (n) => tools.get(n),
     names: () => [...tools.keys()],
     tiers: () => [...tools.values()].map((t) => ({ name: t.name, tier: t.tier })),

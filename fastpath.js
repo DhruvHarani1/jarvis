@@ -95,6 +95,13 @@ function parse(raw, o = {}) {
   if (/^(system status|how(?:'s| is) my (?:pc|computer|laptop|system)(?: doing)?|pc status|computer status|how(?:'s| is) the pc|battery|battery level|how much battery(?: do i have| is left)?|cpu usage)$/.test(t)) return { kind: 'tool', name: 'system_status', args: {} }
   if (/^(what(?:'s| are) my reminders|list (?:my )?reminders|list (?:my )?timers|show (?:my )?reminders)$/.test(t)) return { kind: 'tool', name: 'list_reminders', args: {} }
 
+  // mail and calendar (need a connected Google account; main says so when there is none)
+  if (/^(check (?:my )?(?:e-?mails?|mail|inbox)|(?:any|do i have (?:any )?)(?: ?new| ?unread)? ?(?:e-?mails?|mail|messages)(?: today)?|(?:read )?my (?:unread )?(?:e-?mails?|mail|inbox)|unread (?:e-?mails?|mail)|what(?:'s| is) in my inbox|have i got (?:any )?(?:new )?(?:e-?mails?|mail))$/.test(t)) return { kind: 'tool', name: 'mail_unread', args: {} }
+  if ((m = /^(?:what(?:'s| is| do i have)? (?:on )?(?:my )?(?:calendar|schedule|agenda)|what do i have|do i have any (?:meetings|events|appointments)|my (?:calendar|schedule|agenda)|(?:read|show) (?:me )?my (?:calendar|schedule|agenda)|any (?:meetings|events|appointments))(?: for)?(?: (today|tomorrow|this week|next seven days|next 7 days|the next week))?$/.exec(t))) {
+    const w = m[1] === 'tomorrow' ? 'tomorrow' : !m[1] || m[1] === 'today' ? 'today' : 'next_7_days'
+    return { kind: 'tool', name: 'calendar_events', args: { when: w } }
+  }
+
   // Spotify (free account: names open the search, links play directly)
   if (/^(what(?:'s| is) playing|what song is (?:this|playing)|what(?:'s| is) this song|which song is this|what am i listening to|now playing)(?: on spotify)?$/.test(t)) return { kind: 'tool', name: 'spotify_now_playing', args: {} }
   if (/^(open|play|show) (?:my )?liked songs(?: on spotify)?$/.test(t)) return { kind: 'tool', name: 'spotify_open_liked_songs', args: {} }

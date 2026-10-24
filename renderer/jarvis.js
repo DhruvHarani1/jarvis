@@ -175,6 +175,7 @@
     void handle(v)
   })
   $('brainbtn').addEventListener('click', () => window.jarvis.openBrain())
+  $('acctbtn').addEventListener('click', () => window.jarvis.openAccounts())
   $('menubtn').addEventListener('click', () => window.jarvis.showMenu())
   $('hidebtn').addEventListener('click', () => window.jarvis.hide())
 

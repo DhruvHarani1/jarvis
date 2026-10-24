@@ -9,6 +9,8 @@ const audioClient = require('./audio/client')
 const pcm = require('./audio/pcm')
 const voiceOut = require('./voice-out')
 const appTools = require('./app-tools')
+const accountStoreMod = require('./accounts/store')
+const googleMod = require('./accounts/google')
 const fastpath = require('./fastpath')
 const stt = require('./stt')
 const wakeWord = require('./wake')
@@ -264,6 +266,7 @@ function menuTemplate() {
     { type: 'separator' },
     check('Jarvis can act on this PC (tools)', 'actions'),
     { label: 'Undo last action', click: () => void tools?.runtime.undo().then((r) => speech.speak(r.ok ? r.spoken : r.error, { queue: true })) },
+    { label: 'Accounts: mail and calendar…', click: () => openAccounts() },
     { label: 'Activity log…', click: () => void shell.openPath(tools ? tools.audit.file : '') },
     {
       label: 'Tools',
@@ -358,8 +361,113 @@ ipcMain.on('confirm:answer', (e, id, yes) => {
   if (done) done(yes === true)
 })
 
+/** @type {ReturnType<typeof accountStoreMod.create> | null} */
+let accountStore = null
+/** @type {ReturnType<typeof googleMod.create> | null} */
+let google = null
+/** @type {BrowserWindow | null} */
+let accountsWin = null
+
+function initAccounts() {
+  accountStore = accountStoreMod.create({
+    file: path.join(app.getPath('userData'), 'accounts.json'),
+    crypt: {
+      available: () => safeStorage.isEncryptionAvailable(),
+      enc: (s) => safeStorage.encryptString(s).toString('base64'),
+      dec: (b) => safeStorage.decryptString(Buffer.from(b, 'base64'))
+    }
+  })
+  const testEndpoints = process.env.SPIDEY_TEST && process.env.JARVIS_TEST_GOOGLE ? JSON.parse(process.env.JARVIS_TEST_GOOGLE) : undefined
+  google = googleMod.create({
+    store: accountStore,
+    endpoints: testEndpoints,
+    // the real sign-in only ever opens Google's own page in the user's browser; tests follow the stand-in's redirect themselves
+    openBrowser: async (url) => {
+      if (testEndpoints) return void setImmediate(() => void fetch(url, { redirect: 'follow' }).catch(() => {}))
+      if (!url.startsWith('https://accounts.google.com/')) throw new Error('refusing to open an unexpected sign-in address')
+      await shell.openExternal(url)
+    }
+  })
+}
+
+const GUIDES = { google: 'google-mail-calendar.md', microsoft: 'microsoft-mail-calendar-teams.md' }
+const guideDir = () => (app.isPackaged ? path.join(process.resourcesPath, 'setup-guides') : path.join(__dirname, 'docs', 'setup'))
+
+function openAccounts() {
+  if (accountsWin) {
+    accountsWin.show()
+    accountsWin.focus()
+    return
+  }
+  accountsWin = new BrowserWindow({
+    width: 700,
+    height: 820,
+    minWidth: 560,
+    minHeight: 520,
+    backgroundColor: '#050b1a',
+    title: 'Jarvis — Accounts',
+    icon: iconPath(),
+    autoHideMenuBar: true,
+    webPreferences: { preload: path.join(__dirname, 'preload-accounts.js'), contextIsolation: true, nodeIntegration: false, sandbox: true }
+  })
+  accountsWin.setMenuBarVisibility(false)
+  accountsWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  accountsWin.webContents.on('will-navigate', (e) => e.preventDefault())
+  accountsWin.on('closed', () => {
+    accountsWin = null
+  })
+  accountsWin.loadFile(path.join(__dirname, 'renderer', 'accounts.html'))
+}
+const fromAccounts = (e) => !!accountsWin && e.sender === accountsWin.webContents
+let connecting = false
+/** one sign-in at a time; always answers {ok, message|error} and never lets a secret out */
+async function guarded(fn) {
+  if (connecting) return { ok: false, error: 'another sign-in is still open' }
+  connecting = true
+  try {
+    return await fn()
+  } catch (e) {
+    return { ok: false, error: String((e && e.message) || e) }
+  } finally {
+    connecting = false
+  }
+}
+ipcMain.handle('acct:state', (e) => (fromAccounts(e) && accountStore ? { accounts: accountStore.list(), canEncrypt: safeStorage.isEncryptionAvailable() } : { accounts: [], canEncrypt: false }))
+ipcMain.handle('acct:add-google', (e, form) =>
+  fromAccounts(e) && google && form && typeof form === 'object'
+    ? guarded(async () => {
+        const a = await google.connect({ clientId: form.clientId, clientSecret: form.clientSecret, access: form.access && typeof form.access === 'object' ? { mailRead: form.access.mailRead === true, mailSend: form.access.mailSend === true, calendar: form.access.calendar === true } : {} })
+        buildTray()
+        return { ok: true, message: `Connected ${a.email}.` }
+      })
+    : { ok: false, error: 'not available' }
+)
+ipcMain.handle('acct:reconnect', (e, id) =>
+  fromAccounts(e) && google && typeof id === 'string'
+    ? guarded(async () => {
+        const a = accountStore.get(id)
+        if (!a) return { ok: false, error: 'that account is not here any more' }
+        const has = (s) => a.scopes.some((x) => x.endsWith(s))
+        const r = await google.connect({ clientId: a.clientId, clientSecret: a.clientSecret, access: { mailRead: has('gmail.readonly'), mailSend: has('gmail.send'), calendar: has('calendar.events') } })
+        return { ok: true, message: `Reconnected ${r.email}.` }
+      })
+    : { ok: false, error: 'not available' }
+)
+ipcMain.handle('acct:remove', (e, id) => {
+  if (!fromAccounts(e) || !accountStore || typeof id !== 'string') return { ok: false, error: 'not available' }
+  const removed = accountStore.remove(id)
+  return removed ? { ok: true, message: 'Removed. (To cut Jarvis off at Google as well, remove it at myaccount.google.com/permissions.)' } : { ok: false, error: 'that account is not here any more' }
+})
+ipcMain.on('acct:guide', (e, name) => {
+  if (!fromAccounts(e) || !GUIDES[name]) return
+  const f = path.join(guideDir(), GUIDES[name])
+  if (fs.existsSync(f)) void shell.openPath(f)
+})
+
 function initTools() {
   tools = appTools.create({
+    google,
+    accountStore,
     electron: { app, shell, clipboard },
     userData: app.getPath('userData'),
     brain: () => brain,
@@ -382,6 +490,10 @@ ipcMain.handle('fast:try', async (e, text) => {
   if (f.kind === 'undo') {
     const r = await tools.runtime.undo()
     return { handled: true, say: r.ok ? r.spoken : r.error }
+  }
+  if (!tools.runtime.isAvailable(f.name)) {
+    if (/^(mail_|calendar_)/.test(f.name)) return { handled: true, say: 'Connect a Google account first. Open Accounts from the tray menu.' }
+    return { handled: false }
   }
   const r = await tools.runtime.call(f.name, f.args, { source: 'fastpath', tainted: conversationTainted })
   // fast-path results are only spoken and shown, never given to the language model, so reading untrusted text here does not taint the conversation
@@ -460,6 +572,9 @@ ipcMain.on('brain:reset', (e) => {
     brainHistory = []
     conversationTainted = false
   }
+})
+ipcMain.on('accounts:open', (e) => {
+  if (e.sender === win?.webContents) openAccounts()
 })
 ipcMain.on('brain:open', (e) => {
   if (e.sender === win?.webContents) openBrain()
@@ -727,6 +842,7 @@ if (!app.requestSingleInstanceLock()) {
     speech.setVoice(settings.voiceName)
     audio.onCrash((code) => console.error('audio worker crashed, exit', code))
     initBrain()
+    initAccounts()
     initTools()
     const ours = (url) => typeof url === 'string' && url.startsWith('file://')
     const allowed = (permission, details) => permission === 'media' && (!details || !details.mediaTypes || details.mediaTypes.every((t) => t === 'audio'))

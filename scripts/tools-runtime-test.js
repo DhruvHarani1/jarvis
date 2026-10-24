@@ -184,6 +184,15 @@ process.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true }))
   assert.deepEqual([r.ok, r.error], [false, 'it broke'])
   assert.equal(entries.at(-1).ok, false)
 
+  // a tool can hide itself until what it needs exists (a connected account)
+  let connected = false
+  rt.register({ name: 'needs_account', tier: 'T0', enabled: () => connected, schema: { type: 'object', properties: {} }, run: async () => ({ spoken: 'hi' }) })
+  assert.ok(!rt.specs().some((x) => x.function.name === 'needs_account'))
+  assert.ok((await rt.call('needs_account', {})).denied)
+  connected = true
+  assert.ok(rt.specs().some((x) => x.function.name === 'needs_account'))
+  assert.ok((await rt.call('needs_account', {})).ok)
+
   // every registered tool is in the tier list
   assert.deepEqual(rt.tiers().find((t) => t.name === 'delete_file'), { name: 'delete_file', tier: 'T2' })
 

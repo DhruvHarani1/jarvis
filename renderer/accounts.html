@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; script-src 'self'; img-src data:" />
+    <title>Jarvis — Accounts</title>
+    <link rel="stylesheet" href="brain.css" />
+  </head>
+  <body>
+    <header class="hero">
+      <h1>ACCOUNTS <em>MAIL &amp; CALENDAR</em></h1>
+      <p>Connect your accounts so Jarvis can read your mail and calendar, add events, and send mail you approve. You sign in on Google's own page. Jarvis never sees your password, the sign-in is stored encrypted on this PC, and you can take it back any time.</p>
+    </header>
+
+    <main>
+      <div id="warn" class="warn" hidden></div>
+
+      <section>
+        <h2>Connected <small id="count"></small></h2>
+        <div id="list"></div>
+        <p id="none" class="muted" hidden>Nothing connected yet.</p>
+      </section>
+
+      <section class="card">
+        <h2>Add a Google account (Gmail + Calendar)</h2>
+        <p class="muted">You need your own free Google app first (about 15 minutes, once). <button class="link" id="guide">Open the step-by-step guide ↗</button></p>
+        <div class="grid">
+          <label class="wide">Client ID <small>(ends in .apps.googleusercontent.com)</small>
+            <input id="cid" type="text" autocomplete="off" spellcheck="false" placeholder="123456789-abc…apps.googleusercontent.com" />
+          </label>
+          <label class="wide">Client secret <small>(optional; Google shows one for Desktop apps)</small>
+            <input id="csec" type="password" autocomplete="off" spellcheck="false" placeholder="GOCSPX-…" />
+          </label>
+        </div>
+        <p class="muted">What may Jarvis do?</p>
+        <label class="toggle"><input type="checkbox" id="pRead" checked /> <b>Read my mail</b> <span>— "do I have mail from Mum?"</span></label>
+        <label class="toggle"><input type="checkbox" id="pSend" /> <b>Send mail</b> <span>— always shown to you and approved first.</span></label>
+        <label class="toggle"><input type="checkbox" id="pCal" checked /> <b>Read and add calendar events</b> <span>— "what is on today?", "add a dentist visit Friday at 4".</span></label>
+        <p><button id="connect" class="primary">Connect with Google</button> <span id="addmsg" role="status"></span></p>
+        <p class="muted">Your browser opens on Google's page. If it says "Google hasn't verified this app", that is your own app: choose Advanced, then Go to Jarvis.</p>
+      </section>
+
+      <section class="card">
+        <h2>Microsoft (Outlook, work calendar, Teams)</h2>
+        <p class="muted">Coming next. The guide is ready: <button class="link" id="msguide">Open the Microsoft guide ↗</button></p>
+      </section>
+    </main>
+    <script src="accounts.js"></script>
+  </body>
+</html>

@@ -42,6 +42,16 @@ const cases = [
   ['open microsoft teams', tool('open_app', { name: 'microsoft teams' })],
   ['open youtube', tool('open_url', { url: 'https://www.youtube.com/' })],
   ['open gmail', tool('open_url', { url: 'https://mail.google.com/' })],
+  // mail and calendar
+  ['check my email', tool('mail_unread', {})],
+  ['do I have any new emails', tool('mail_unread', {})],
+  ['any unread mail', tool('mail_unread', {})],
+  ['what is in my inbox', tool('mail_unread', {})],
+  ["what's on my calendar", tool('calendar_events', { when: 'today' })],
+  ['what is on my calendar tomorrow', tool('calendar_events', { when: 'tomorrow' })],
+  ['what do I have today', tool('calendar_events', { when: 'today' })],
+  ['do I have any meetings', tool('calendar_events', { when: 'today' })],
+  ['what is on my schedule this week', tool('calendar_events', { when: 'next_7_days' })],
   // spotify
   ['what is playing', tool('spotify_now_playing', {})],
   ["what's playing on spotify", tool('spotify_now_playing', {})],

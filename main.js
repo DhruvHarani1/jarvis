@@ -279,6 +279,25 @@ async function forgetEverythingDialog() {
   }
 }
 
+/** the two risky switches always go through a warning box shown by this process, never decided by the page */
+async function askScreenVision(on) {
+  if (!on) return update({ screenVision: false })
+  const r = await dialog.showMessageBox(win, { type: 'warning', buttons: ['Turn on', 'Cancel'], defaultId: 1, cancelId: 1, message: 'Turn on screen understanding?', detail: 'When you ask "what is on my screen", Jarvis will show you a box, and only if you click Allow does he send a picture of your main screen to your AI provider (Groq, Gemini and so on) so it can answer. Anything visible goes with it, including private things. Nothing is saved.' })
+  update({ screenVision: r.response === 0 })
+}
+async function askPowerMode(on) {
+  if (!on) return update({ powerMode: false })
+  const r = await dialog.showMessageBox(win, {
+    type: 'warning',
+    buttons: ['Turn on until I quit Jarvis', 'Cancel'],
+    defaultId: 1,
+    cancelId: 1,
+    message: 'Turn on Power mode?',
+    detail: 'Jarvis will be able to run PowerShell commands, type into other apps and press buttons in them. Every single action still shows you the exact command and waits for you to click Allow, and it runs as you, never as administrator. It switches itself off again whenever Jarvis restarts.'
+  })
+  update({ powerMode: r.response === 0 })
+}
+
 function menuTemplate() {
   const check = (label, key) => ({ label, type: 'checkbox', checked: !!settings[key], click: (i) => update({ [key]: i.checked }) })
   return [
@@ -309,28 +328,13 @@ function menuTemplate() {
       label: 'Screen understanding: "what is on my screen" (sends a screenshot to your AI provider, asks every time)',
       type: 'checkbox',
       checked: !!settings.screenVision,
-      click: async (i) => {
-        if (!i.checked) return update({ screenVision: false })
-        const r = await dialog.showMessageBox(win, { type: 'warning', buttons: ['Turn on', 'Cancel'], defaultId: 1, cancelId: 1, message: 'Turn on screen understanding?', detail: 'When you ask "what is on my screen", Jarvis will show you a box, and only if you click Allow does he send a picture of your main screen to your AI provider (Groq, Gemini and so on) so it can answer. Anything visible goes with it, including private things. Nothing is saved.' })
-        update({ screenVision: r.response === 0 })
-      }
+      click: (i) => void askScreenVision(i.checked)
     },
     {
       label: 'Power mode: let Jarvis run any command (asks every time; off at every start)',
       type: 'checkbox',
       checked: !!settings.powerMode,
-      click: async (i) => {
-        if (!i.checked) return update({ powerMode: false })
-        const r = await dialog.showMessageBox(win, {
-          type: 'warning',
-          buttons: ['Turn on until I quit Jarvis', 'Cancel'],
-          defaultId: 1,
-          cancelId: 1,
-          message: 'Turn on Power mode?',
-          detail: 'Jarvis will be able to run PowerShell commands, type into other apps and press buttons in them. Every single action still shows you the exact command and waits for you to click Allow, and it runs as you, never as administrator. It switches itself off again whenever Jarvis restarts.'
-        })
-        update({ powerMode: r.response === 0 })
-      }
+      click: (i) => void askPowerMode(i.checked)
     },
     { label: 'Undo last action', click: () => void tools?.runtime.undo().then((r) => speech.speak(r.ok ? r.spoken : r.error, { queue: true })) },
     { label: 'Brief me now', click: () => void giveBriefing() },
@@ -401,6 +405,55 @@ ipcMain.on('settings:patch', (e, patch) => {
   }
   if (Object.keys(clean).length) update(clean)
 })
+const fromMain = (e) => e.sender === win?.webContents
+const maskPhone = (p) => (p ? String(p).replace(/d(?=d{3})/g, '•') : '')
+const toolsState = () => ({
+  actions: settings.actions !== false,
+  screenVision: !!settings.screenVision,
+  powerMode: !!settings.powerMode,
+  tools: (tools ? tools.toolList() : []).map((t) => ({ name: t.name, tier: t.tier, enabled: !(settings.disabledTools || []).includes(t.name) }))
+})
+ipcMain.handle('tools:state', (e) => (fromMain(e) ? toolsState() : null))
+ipcMain.handle('tools:set', async (e, what, value) => {
+  if (!fromMain(e)) return null
+  if (what === 'actions') update({ actions: value === true })
+  else if (what === 'screenVision') await askScreenVision(value === true)
+  else if (what === 'powerMode') await askPowerMode(value === true)
+  else if (what === 'tool' && value && typeof value.name === 'string' && typeof value.enabled === 'boolean' && tools && tools.toolList().some((t) => t.name === value.name)) {
+    const off = new Set(settings.disabledTools || [])
+    if (value.enabled) off.delete(value.name)
+    else off.add(value.name)
+    update({ disabledTools: [...off] })
+  }
+  return toolsState()
+})
+ipcMain.handle('tools:undo', async (e) => {
+  if (!fromMain(e) || !tools) return { ok: false, error: 'not available' }
+  const r = await tools.runtime.undo()
+  void speech.speak(r.ok ? r.spoken : r.error, { queue: true })
+  return { ok: !!r.ok, message: r.ok ? r.spoken : r.error }
+})
+ipcMain.handle('memory:state', (e) => {
+  if (!fromMain(e) || !memory) return { available: false, facts: [], contacts: [] }
+  return {
+    available: true,
+    facts: memory.list(60).map((f) => ({ id: f.id, text: f.text, source: f.source })),
+    contacts: memory.listContacts().map((c) => ({ id: c.id, name: c.name, phone: maskPhone(c.phone), email: c.email }))
+  }
+})
+ipcMain.handle('memory:forget', (e, id) => {
+  if (!fromMain(e) || !memory || !Number.isInteger(id)) return { ok: false }
+  return { ok: !!memory.forget(id) }
+})
+ipcMain.handle('memory:delete-contact', (e, id) => {
+  if (!fromMain(e) || !memory || !Number.isInteger(id)) return { ok: false }
+  return { ok: !!memory.deleteContact(id) }
+})
+ipcMain.handle('memory:export', async (e) => (fromMain(e) ? (await exportMemory(), { ok: true }) : { ok: false }))
+ipcMain.handle('memory:forget-all', async (e) => (fromMain(e) ? (await forgetEverythingDialog(), { ok: true }) : { ok: false }))
+ipcMain.handle('activity:recent', (e) => (fromMain(e) && tools ? tools.audit.tail(40).reverse() : []))
+ipcMain.on('activity:open', (e) => fromMain(e) && tools && void shell.openPath(tools.audit.file))
+ipcMain.on('briefing:now', (e) => fromMain(e) && void giveBriefing())
 ipcMain.handle('settings:get', () => publicSettings())
 
 // ---------------------------------------------------------------- Jarvis's hands: tools, confirmation, activity log

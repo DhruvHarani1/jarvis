@@ -8,7 +8,7 @@
   if (typeof window === 'undefined' || !window.jarvis) return
   const $ = (id) => document.getElementById(id)
   const panel = $('settings')
-  const PAGES = ['general', 'voice', 'brain', 'accounts', 'setup']
+  const PAGES = ['general', 'voice', 'brain', 'accounts', 'tools', 'memory', 'activity', 'setup']
   let current = ''
 
   function show(page) {

@@ -76,3 +76,17 @@ contextBridge.exposeInMainWorld('welcomeApi', {
   setWake: (on) => ipcRenderer.invoke('welcome:wake', !!on),
   finish: () => ipcRenderer.send('welcome:finish')
 })
+// Tools, memory and activity pages. Nothing here can switch Power mode or screen vision on by itself: main shows its own warning box and decides.
+contextBridge.exposeInMainWorld('manageApi', {
+  toolsState: () => ipcRenderer.invoke('tools:state'),
+  toolsSet: (what, value) => ipcRenderer.invoke('tools:set', what, value),
+  undo: () => ipcRenderer.invoke('tools:undo'),
+  memoryState: () => ipcRenderer.invoke('memory:state'),
+  memoryForget: (id) => ipcRenderer.invoke('memory:forget', id),
+  contactDelete: (id) => ipcRenderer.invoke('memory:delete-contact', id),
+  memoryExport: () => ipcRenderer.invoke('memory:export'),
+  memoryForgetAll: () => ipcRenderer.invoke('memory:forget-all'),
+  activity: () => ipcRenderer.invoke('activity:recent'),
+  activityOpen: () => ipcRenderer.send('activity:open'),
+  briefingNow: () => ipcRenderer.send('briefing:now')
+})

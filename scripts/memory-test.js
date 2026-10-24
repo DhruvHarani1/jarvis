@@ -113,6 +113,12 @@ assert.equal(looksSecret('order number 1234567890123456'), null, 'a 16 digit num
   m.close()
   m = mem.create({ file, now: () => t })
   assert.equal(m.count(), 1)
+  // contact names: spaces collapse, "my"/"the" are dropped, double letters survive
+  m.saveContact({ name: 'Ross  Geller', phone: '+919876543210' })
+  m.saveContact({ name: 'Mum', phone: '+911234567890' })
+  assert.equal(m.findContact('Ross Geller').name, 'Ross Geller')
+  assert.equal(m.findContact('my mum').name, 'Mum')
+  assert.equal(m.findContact('the  Mum').name, 'Mum')
   m.close()
 
   console.log('memory: ALL PASS')

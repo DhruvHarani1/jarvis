@@ -134,6 +134,7 @@ async function connect(match) {
 
     // inbox
     await w.ev('window.__inbox && window.__inbox.onItems([{id:1,app:"WhatsApp",appId:"x",title:"Mum",body:"dinner at eight",at:Date.now()}])')
+    await sleep(300)
     ok('inbox shows a notification and counts it', (await w.ev('document.getElementById("icount").textContent')) === '1')
   } catch (e) {
     fails++

@@ -2,7 +2,7 @@
 
 A voice-first AI assistant for Windows. Say "Hey Jarvis", ask or command, hear a natural voice answer. He can open apps, control volume and music, set timers and reminders, read and send your mail, manage your calendar, message people on WhatsApp and Teams, remember things about you, and read your notifications aloud. Free, open source, and private by default: speech recognition, the wake word and the voice run on your own PC.
 
-> Status: version 0.1.0, not released yet. Built by one developer with Claude. See [PLAN.md](PLAN.md) for the design and what is done, and [RESEARCH.md](RESEARCH.md) for why.
+> Status: version 0.2.0 (early, unsigned). Built by one developer with Claude. See [PLAN.md](PLAN.md) for the design and what is done, and [RESEARCH.md](RESEARCH.md) for why.
 
 ## Quick start
 
@@ -13,7 +13,7 @@ npm install
 npm start
 ```
 
-A setup window opens the first time. It checks your microphone, offers the voice models (about 130 MB, each file checked before use), and points you to the AI key and account steps. Everything in it is optional and can be done later from the tray menu ("Setup guide…").
+Jarvis is one window: a glowing orb that shows what he is doing, a caption, and a conversation drawer. The gear opens Settings inside the same window (General, Voice, AI brain, Accounts, Tools, Memory, Activity, Setup). A setup page opens the first time. It checks your microphone, offers the voice models (about 130 MB, each file checked before use), and points you to the AI key and account steps. Everything in it is optional and can be done later from Settings.
 
 To build an installer: `npm run dist` (writes `release\Jarvis-Setup-<version>.exe`).
 
@@ -44,7 +44,7 @@ Everyday commands work with no AI key and no internet.
 - **Keys and sign-ins are encrypted** with Windows (DPAPI) and stay on this PC. Memory and contacts are a local database.
 - **Risky actions always ask first**, showing exactly what will happen (the file, the recipient and the whole message). Deletes go to the Recycle Bin. File tools only reach Desktop, Documents, Downloads, Pictures, Music and Videos.
 - **Text written by other people cannot give orders.** After Jarvis reads an email, the clipboard or a file name, a spoken "yes" no longer approves a risky action; only a click does. Facts stored while untrusted text was around are never fed back into prompts on their own.
-- **Power mode** (tray menu, off at every start) lets him run PowerShell commands, type into other apps and press buttons in them. Each call shows the exact command and needs a click on Allow (a spoken yes is never enough), runs as you and never as administrator, and a block list refuses the worst accidents (wiping disks, switching off Defender, reading his own stored keys). The block list is a safety net, not a wall: you reading the command is the real control.
+- **Power mode** (Settings → Tools, off at every start) lets him run PowerShell commands, type into other apps and press buttons in them. Each call shows the exact command and needs a click on Allow (a spoken yes is never enough), runs as you and never as administrator, and a block list refuses the worst accidents (wiping disks, switching off Defender, reading his own stored keys). The block list is a safety net, not a wall: you reading the command is the real control.
 - **Everything he does is logged** (tray: "Activity log…"). "Forget everything" erases memory, contacts and the saved conversation.
 
 ## Setting up
@@ -65,7 +65,7 @@ node scripts/license-audit.js    # production dependencies must be permissive
 node scripts/measure-ram.js      # memory of the whole process tree
 ```
 
-Layout: `main.js` (window, tray, wiring) · `audio/` (speech worker: Moonshine, Piper, wake word) · `tools/` (the tool runtime, Windows tools, Spotify, Google, WhatsApp/Teams, memory) · `accounts/` (OAuth, Google) · `memory/` (SQLite) · `router/` (quota ledger, retry hints, health) · `brain.js` (providers and failover) · `agent.js` (tool-calling loop) · `fastpath.js` (commands that need no AI) · `renderer/` (windows).
+Layout: `main.js` (window, tray, wiring) · `audio/` (speech worker: Parakeet and Moonshine speech models, Piper voice, wake word) · `tools/` (the tool runtime, Windows tools, Spotify, Google, WhatsApp/Teams, memory) · `accounts/` (OAuth, Google) · `memory/` (SQLite) · `router/` (quota ledger, retry hints, health) · `brain.js` (providers and failover) · `agent.js` (tool-calling loop) · `fastpath.js` (commands that need no AI) · `renderer/` (the one window: orb and settings pages).
 
 Test fixtures (`scratch/`) and downloaded models (`models-dev/`) are not committed.
 

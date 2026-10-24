@@ -150,7 +150,7 @@ function create({ file, DatabaseSync, now = Date.now }) {
   const contactPub = (c) => ({ id: c.id, name: c.name, phone: c.phone, email: c.email })
   /** @returns {{ok:true, contact:any, previous:any|null}|{ok:false, error:string}} */
   function saveContact({ name, phone = '', email = '' }) {
-    const n = String(name || '').replace(/s+/g, ' ').trim()
+    const n = String(name || '').replace(/\s+/g, ' ').trim()
     if (n.length < 1 || n.length > 40) return { ok: false, error: 'a contact needs a short name' }
     const previous = q.cByName.get(n)
     q.cInsert.run(n, phone, email, now())
@@ -158,7 +158,7 @@ function create({ file, DatabaseSync, now = Date.now }) {
   }
   /** exact name first; otherwise a single contact whose name starts with or contains the words. null when none, 'many' when ambiguous */
   function findContact(name) {
-    const n = String(name || '').replace(/s+/g, ' ').trim().toLowerCase().replace(/^(my|the)s+/, '')
+    const n = String(name || '').replace(/\s+/g, ' ').trim().toLowerCase().replace(/^(my|the)\s+/, '')
     if (!n) return null
     const all = q.cAll.all()
     const exact = all.find((c) => c.name.toLowerCase() === n)

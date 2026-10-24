@@ -162,9 +162,18 @@ function create({ store, fetch: doFetch = fetch, now = Date.now, endpoints = {},
   }
 
   // ------------------------------------------------------------------ Calendar
+  const JOIN = /https:\/\/(?:teams\.microsoft\.com|teams\.live\.com|meet\.google\.com|(?:[a-z0-9-]+\.)?zoom\.us)\/[^\s<>"')]+/i
+  /** the link that joins an online meeting: Google Meet, or a Teams / Zoom link in the place or description */
+  const joinLink = (e) => {
+    if (e.hangoutLink && JOIN.test(e.hangoutLink)) return e.hangoutLink
+    const video = ((e.conferenceData && e.conferenceData.entryPoints) || []).find((p) => p.entryPointType === 'video' && JOIN.test(p.uri || ''))
+    if (video) return video.uri
+    const m = JOIN.exec(`${e.location || ''} ${e.description || ''}`)
+    return m ? m[0].replace(/[.,;]+$/, '') : ''
+  }
   const mapEvent = (e) => {
     const allDay = !!(e.start && e.start.date)
-    return { id: e.id, title: e.summary || '(no title)', start: (e.start && (e.start.dateTime || e.start.date)) || '', end: (e.end && (e.end.dateTime || e.end.date)) || '', allDay, location: e.location || '', status: e.status }
+    return { join: joinLink(e), id: e.id, title: e.summary || '(no title)', start: (e.start && (e.start.dateTime || e.start.date)) || '', end: (e.end && (e.end.dateTime || e.end.date)) || '', allDay, location: e.location || '', status: e.status }
   }
 
   async function events(id, { from, to, max = 15 }) {

@@ -23,7 +23,9 @@ const MIGRATIONS = [
    CREATE TRIGGER facts_ai AFTER INSERT ON facts BEGIN INSERT INTO facts_fts(rowid, text, tags) VALUES (new.id, new.text, new.tags); END;
    CREATE TRIGGER facts_ad AFTER DELETE ON facts BEGIN INSERT INTO facts_fts(facts_fts, rowid, text, tags) VALUES ('delete', old.id, old.text, old.tags); END;
    CREATE TRIGGER facts_au AFTER UPDATE ON facts BEGIN INSERT INTO facts_fts(facts_fts, rowid, text, tags) VALUES ('delete', old.id, old.text, old.tags); INSERT INTO facts_fts(rowid, text, tags) VALUES (new.id, new.text, new.tags); END;
-   CREATE TABLE messages (id INTEGER PRIMARY KEY, role TEXT NOT NULL, content TEXT NOT NULL, ts INTEGER NOT NULL);`
+   CREATE TABLE messages (id INTEGER PRIMARY KEY, role TEXT NOT NULL, content TEXT NOT NULL, ts INTEGER NOT NULL);`,
+  // 2: people Jarvis may message. Numbers and addresses stay in this table; a model only ever sees names.
+  `CREATE TABLE contacts (id INTEGER PRIMARY KEY, name TEXT NOT NULL COLLATE NOCASE UNIQUE, phone TEXT NOT NULL DEFAULT '', email TEXT NOT NULL DEFAULT '', created INTEGER NOT NULL);`
 ]
 
 /** words worth searching for: letters and digits, no filler words */
@@ -65,6 +67,11 @@ function create({ file, DatabaseSync, now = Date.now }) {
     addMsg: db.prepare('INSERT INTO messages (role, content, ts) VALUES (?, ?, ?)'),
     trimMsgs: db.prepare('DELETE FROM messages WHERE id <= (SELECT max(id) FROM messages) - ?'),
     recent: db.prepare('SELECT role, content, ts FROM messages WHERE ts >= ? ORDER BY id DESC LIMIT ?'),
+    cInsert: db.prepare('INSERT INTO contacts (name, phone, email, created) VALUES (?, ?, ?, ?) ON CONFLICT(name) DO UPDATE SET phone = excluded.phone, email = excluded.email'),
+    cByName: db.prepare('SELECT * FROM contacts WHERE name = ?'),
+    cAll: db.prepare('SELECT * FROM contacts ORDER BY name'),
+    cDel: db.prepare('DELETE FROM contacts WHERE id = ?'),
+    clearContacts: db.prepare('DELETE FROM contacts'),
     clearFacts: db.prepare('DELETE FROM facts'),
     clearMsgs: db.prepare('DELETE FROM messages')
   }
@@ -139,6 +146,34 @@ function create({ file, DatabaseSync, now = Date.now }) {
     return out
   }
 
+  // ---- contacts
+  const contactPub = (c) => ({ id: c.id, name: c.name, phone: c.phone, email: c.email })
+  /** @returns {{ok:true, contact:any, previous:any|null}|{ok:false, error:string}} */
+  function saveContact({ name, phone = '', email = '' }) {
+    const n = String(name || '').replace(/s+/g, ' ').trim()
+    if (n.length < 1 || n.length > 40) return { ok: false, error: 'a contact needs a short name' }
+    const previous = q.cByName.get(n)
+    q.cInsert.run(n, phone, email, now())
+    return { ok: true, contact: contactPub(q.cByName.get(n)), previous: previous ? contactPub(previous) : null }
+  }
+  /** exact name first; otherwise a single contact whose name starts with or contains the words. null when none, 'many' when ambiguous */
+  function findContact(name) {
+    const n = String(name || '').replace(/s+/g, ' ').trim().toLowerCase().replace(/^(my|the)s+/, '')
+    if (!n) return null
+    const all = q.cAll.all()
+    const exact = all.find((c) => c.name.toLowerCase() === n)
+    if (exact) return contactPub(exact)
+    const near = all.filter((c) => c.name.toLowerCase().startsWith(n) || c.name.toLowerCase().split(' ').includes(n) || n.includes(c.name.toLowerCase()))
+    return near.length === 1 ? contactPub(near[0]) : near.length > 1 ? 'many' : null
+  }
+  const listContacts = () => q.cAll.all().map(contactPub)
+  const deleteContact = (id) => {
+    const c = q.cAll.all().find((x) => x.id === id)
+    if (!c) return null
+    q.cDel.run(id)
+    return contactPub(c)
+  }
+
   // ---- conversation
   function addMessage(role, content) {
     q.addMsg.run(role === 'assistant' ? 'assistant' : 'user', String(content).slice(0, 800), now())
@@ -152,18 +187,19 @@ function create({ file, DatabaseSync, now = Date.now }) {
 
   /** everything, for the export and for "forget everything" */
   function exportAll() {
-    return { exportedAt: new Date(now()).toISOString(), facts: q.all.all(MAX_FACTS).map(pub), messages: db.prepare('SELECT role, content, ts FROM messages ORDER BY id').all() }
+    return { exportedAt: new Date(now()).toISOString(), contacts: q.cAll.all().map(contactPub), facts: q.all.all(MAX_FACTS).map(pub), messages: db.prepare('SELECT role, content, ts FROM messages ORDER BY id').all() }
   }
   function forgetAll() {
     const n = q.count.get().n
     q.clearFacts.run()
     q.clearMsgs.run()
+    q.clearContacts.run()
     db.exec("INSERT INTO facts_fts(facts_fts) VALUES ('rebuild')")
     return n
   }
   const close = () => db.close()
 
-  return { remember, search, list, get, forget, restore, count, forPrompt, addMessage, recentMessages, clearMessages, exportAll, forgetAll, close, terms, MAX_FACTS }
+  return { saveContact, findContact, listContacts, deleteContact, remember, search, list, get, forget, restore, count, forPrompt, addMessage, recentMessages, clearMessages, exportAll, forgetAll, close, terms, MAX_FACTS }
 }
 
 module.exports = { create, terms, ftsQuery, MAX_FACTS, MAX_FACT_CHARS }

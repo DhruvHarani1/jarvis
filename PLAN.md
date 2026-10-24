@@ -400,6 +400,18 @@ Order by value for Dhruv: Spotify (URI + media keys), Calendar and Mail (OAuth o
 
 **Next in M2b:** (done: Accounts window and Google; remaining) the Accounts window with Google and Microsoft sign-in (PKCE, DPAPI token store), then Calendar and Mail read tools, then the write tools with confirmation; WhatsApp and Teams (deep links plus UI automation); optional MCP client; Power mode.
 
+### M2b: WhatsApp and Teams (2026-10-24)
+
+Built (`tools/chatapps.js`), working the way a person does because neither app offers a safe personal-account API:
+- **Send:** whatsapp_send and teams_message (both always confirmed: the box shows the real number or address, masked, and the exact text). Jarvis opens the chat with the message already typed (whatsapp://send link, or a teams.microsoft.com chat link), then checks that the right app is in front and presses Enter. If the app is not in front it does not press anything and says the message is typed and waiting.
+- **Contacts** (names to numbers and addresses) live in the local memory database; the model only ever sees names: contact_save, contact_list, contact_remove (undoable). Numbers must have a country code. Forget-everything also erases contacts.
+- **Read:** read_notifications reads the Windows notification inbox Jarvis already keeps (what WhatsApp or Teams showed as toasts); results are marked untrusted.
+- **Meetings:** meeting_join_next opens the join link (Teams, Google Meet or Zoom, hosts checked) of the meeting on now or within two hours, from the Google calendar, after a confirmation.
+- **Voice:** "send a whatsapp to mum saying I am late", "message Rahul on teams saying standup moved", "join my next meeting", "what did Mum say", "save Mum whatsapp number +91…". The app must be named, so a plain "message mum" is not guessed.
+- **Checked for real on this PC:** WhatsApp (Store app, process WhatsApp.Root) came to the front when its link was opened and was detected; no key was pressed. **Teams is not installed on this PC**, so Teams messages only get typed into the browser chat (the app is not in front, so nothing is pressed); the keystroke path for the Teams app is untested.
+- Not built: call controls (mute, camera, leave) in Teams, and reading a WhatsApp chat beyond notifications (no safe way).
+- Tests: 30 unit suites pass, including this one (links built from clean parts only, text cannot add link parameters, no key when the app is not in front, no-send on decline).
+
 ### M3: Memory (1-2 sessions)
 
 - SQLite schema + migrations, history, facts with FTS5, session summaries, memory commands, viewer/export, secret filter.

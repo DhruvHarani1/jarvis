@@ -486,6 +486,8 @@ ipcMain.on('acct:guide', (e, name) => {
   if (fs.existsSync(f)) void shell.openPath(f)
 })
 
+/** the latest Windows notifications, kept in memory only (read_notifications uses them) */
+const recentNotifs = []
 /** @type {ReturnType<typeof memoryMod.create> | null} */
 let memory = null
 function initMemory() {
@@ -503,6 +505,7 @@ function initTools() {
     google,
     accountStore,
     memory,
+    recentNotifications: () => (settings.inbox ? recentNotifs : []),
     electron: { app, shell, clipboard },
     userData: app.getPath('userData'),
     brain: () => brain,
@@ -909,6 +912,8 @@ if (!app.requestSingleInstanceLock()) {
     stopInbox = notifications.start({
       selfIds: [APP_ID],
       emit: (items) => {
+        recentNotifs.push(...items)
+        if (recentNotifs.length > 100) recentNotifs.splice(0, recentNotifs.length - 100)
         if (settings.inbox) win?.webContents.send('inbox', items)
       }
     })

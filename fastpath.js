@@ -103,6 +103,17 @@ function parse(raw, o = {}) {
   if (/^(?:forget everything|forget all of it|erase (?:all )?(?:your )?memory|wipe (?:all )?(?:your )?memory|clear (?:your )?memory|delete (?:all )?(?:your )?memory)$/.test(t)) return { kind: 'tool', name: 'forget_everything', args: {} }
   if ((m = /^forget (?:about )?(.{2,80})$/.exec(t)) && !/^(everything|all)/.test(m[1])) return { kind: 'tool', name: 'forget', args: { query: m[1] } }
 
+  // WhatsApp, Teams, contacts, meetings (the app must be named; always confirmed before anything is sent)
+  const who = (x) => String(x).trim().replace(/^(?:my|to)\s+/i, '')
+  if ((m = /^(?:send (?:a )?)?whatsapp(?: message)? (?:to )?(.{1,40}?) (?:saying|that|:) (.{1,500})$/i.exec(said)) || (m = /^(?:message|text|tell|send) (.{1,40}?) on whatsapp (?:saying |that |: ?)?(.{1,500})$/i.exec(said))) return { kind: 'tool', name: 'whatsapp_send', args: { to: who(m[1]), text: m[2].trim() } }
+  if ((m = /^(?:send (?:a )?)?teams(?: message)? (?:to )?(.{1,40}?) (?:saying|that|:) (.{1,500})$/i.exec(said)) || (m = /^(?:message|chat|tell|send) (.{1,40}?) on teams (?:saying |that |: ?)?(.{1,500})$/i.exec(said))) return { kind: 'tool', name: 'teams_message', args: { to: who(m[1]), text: m[2].trim() } }
+  if (/^join (?:my |the )?(?:next )?(?:meeting|call|teams call|teams meeting|online meeting)$/.test(t)) return { kind: 'tool', name: 'meeting_join_next', args: {} }
+  if ((m = /^what did (.{1,40}?) (?:say|send|write|message|text)(?: me)?(?: on (whatsapp|teams))?$/.exec(t))) return { kind: 'tool', name: 'read_notifications', args: m[2] ? { from: who(m[1]), app: m[2] } : { from: who(m[1]) } }
+  if (/^(?:read|check|any|do i have any|show) (?:my )?(?:new )?(whatsapp|teams)(?: messages| notifications)?$/.test(t)) return { kind: 'tool', name: 'read_notifications', args: { app: /whatsapp/.test(t) ? 'whatsapp' : 'teams' } }
+  if ((m = /^(?:save|add) (?:contact )?(.{1,40}?)(?:'s)? (?:whatsapp )?(?:phone )?number(?: is| as)? (\+[\d ()-]{8,22})$/i.exec(said))) return { kind: 'tool', name: 'contact_save', args: { name: who(m[1]), phone: m[2].trim() } }
+  if ((m = /^(?:save|add) (?:contact )?(.{1,40}?)(?:'s)? (?:teams |work )?e-?mail(?: address)?(?: is| as)? (\S+@\S+)$/i.exec(said))) return { kind: 'tool', name: 'contact_save', args: { name: who(m[1]), email: m[2].trim() } }
+  if (/^(?:list|show|what are) (?:my )?contacts$/.test(t)) return { kind: 'tool', name: 'contact_list', args: {} }
+
   // mail and calendar (need a connected Google account; main says so when there is none)
   if (/^(check (?:my )?(?:e-?mails?|mail|inbox)|(?:any|do i have (?:any )?)(?: ?new| ?unread)? ?(?:e-?mails?|mail|messages)(?: today)?|(?:read )?my (?:unread )?(?:e-?mails?|mail|inbox)|unread (?:e-?mails?|mail)|what(?:'s| is) in my inbox|have i got (?:any )?(?:new )?(?:e-?mails?|mail))$/.test(t)) return { kind: 'tool', name: 'mail_unread', args: {} }
   if ((m = /^(?:what(?:'s| is| do i have)? (?:on )?(?:my )?(?:calendar|schedule|agenda)|what do i have|do i have any (?:meetings|events|appointments)|my (?:calendar|schedule|agenda)|(?:read|show) (?:me )?my (?:calendar|schedule|agenda)|any (?:meetings|events|appointments))(?: for)?(?: (today|tomorrow|this week|next seven days|next 7 days|the next week))?$/.exec(t))) {

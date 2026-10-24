@@ -12,6 +12,40 @@ const ONES = { zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seve
 const TENS = { twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90 }
 const WEB = { youtube: 'https://www.youtube.com/', gmail: 'https://mail.google.com/', google: 'https://www.google.com/', 'google maps': 'https://maps.google.com/', maps: 'https://maps.google.com/', whatsapp: null, github: 'https://github.com/', chatgpt: 'https://chatgpt.com/' }
 
+// Recogniser mishearings for things the user can open. Applied to the open/launch command
+// only: send/delete style commands keep their exact patterns, so a fuzzy match can never
+// turn a misheard sentence into a message being sent or something being deleted.
+const MISHEAR = {
+  'spotty fy': 'spotify', 'spotty fire': 'spotify', 'spot if i': 'spotify', 'spot of i': 'spotify', 'spodify': 'spotify',
+  'gee mail': 'gmail', 'g mail': 'gmail', 'gee male': 'gmail', 'you tube': 'youtube', 'you toob': 'youtube',
+  'whats app': 'whatsapp', 'chat gpt': 'chatgpt', 'chat g p t': 'chatgpt'
+}
+
+// common Windows app names worth offering a "did you mean" for, on top of the web
+// targets and any installed-apps list handed in via o.apps
+const KNOWN_APPS = ['spotify', 'notepad', 'calculator', 'teams', 'outlook', 'settings']
+
+/** what the user probably said, for opening things only */
+function heardAs(s) {
+  const t = String(s || '').toLowerCase().trim()
+  return t in MISHEAR ? MISHEAR[t] : t
+}
+
+/** edit distance, used only to offer a "did you mean" — never to run something unasked */
+function edits(a, b) {
+  const row = Array.from({ length: b.length + 1 }, (_, j) => j)
+  for (let i = 1; i <= a.length; i++) {
+    let prev = row[0]
+    row[0] = i
+    for (let j = 1; j <= b.length; j++) {
+      const cur = row[j]
+      row[j] = Math.min(row[j] + 1, row[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1))
+      prev = cur
+    }
+  }
+  return row[b.length]
+}
+
 /** "twenty five" / "25" / "a" / "an" / "half an" -> number, or null */
 function num(s) {
   const t = String(s || '').trim().toLowerCase().replace(/-/g, ' ')
@@ -141,9 +175,23 @@ function parse(raw, o = {}) {
   if ((m = /^play (\S+)$/i.exec(bare)) && /^(spotify:|https:\/\/open\.spotify\.com\/)/i.test(m[1])) return { kind: 'tool', name: 'spotify_play', args: { link: m[1] } }
 
   if ((m = /^(?:open|launch|start|run) (?:the )?(.{2,40}?)(?: app| application)?$/.exec(t))) {
-    const what = m[1].trim()
+    // re-derive the name from the whole sentence: the lazy regex above lets a trailing
+    // " app" eat words the recogniser split ("whats app" would arrive as "whats")
+    const what = heardAs(t.replace(/^(?:open|launch|start|run) (?:the )?/, '').trim()).replace(/(?: app| application)$/, '').trim()
     if (/^(timer|a timer|the timer|focus|conversation|wake|listening|notifications)/.test(what)) return null
     if (what in WEB && WEB[what]) return { kind: 'tool', name: 'open_url', args: { url: WEB[what] } }
+    // A near miss against a known name is asked about, never guessed: opening is reversible
+    // (T1), but the correction is offered instead of run so a mishearing cannot open the
+    // wrong thing. Known names are the web targets plus, when given, the installed apps.
+    const known = Object.keys(WEB).concat(KNOWN_APPS, Array.isArray(o.apps) ? o.apps.map(String) : []).map((c) => String(c).toLowerCase())
+    let best = null, bestD = 99
+    for (const c of known) {
+      const d = edits(what, c)
+      if (d < bestD) { best = c; bestD = d }
+    }
+    if (bestD === 0) return { kind: 'tool', name: 'open_app', args: { name: best } }
+    const limit = what.length >= 5 ? 2 : 1
+    if (bestD <= limit) return { kind: 'say', text: `Did you mean open ${best[0].toUpperCase() + best.slice(1)}? Say it again to open it.` }
     return { kind: 'tool', name: 'open_app', args: { name: what } }
   }
   return null

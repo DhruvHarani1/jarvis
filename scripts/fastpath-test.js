@@ -70,7 +70,14 @@ const cases = [
   ['battery', tool('system_status', {})],
   ['what are my reminders', tool('list_reminders', {})],
   ['undo that', { kind: 'undo' }],
-  ['undo', { kind: 'undo' }]
+  ['undo', { kind: 'undo' }],
+  // recogniser mishearings for the open command (issue #5)
+  ['open spotty fy', tool('open_app', { name: 'spotify' })],
+  ['launch spot if i', tool('open_app', { name: 'spotify' })],
+  ['open gee male', tool('open_url', { url: 'https://mail.google.com/' })],
+  ['open you tube', tool('open_url', { url: 'https://www.youtube.com/' })],
+  ['open whats app', tool('open_app', { name: 'whatsapp' })],
+  ['open chat gpt', tool('open_url', { url: 'https://chatgpt.com/' })]
 ]
 for (const [text, want] of cases) assert.deepEqual(parse(text), want, JSON.stringify(text))
 
@@ -88,5 +95,15 @@ for (const text of [
   'remind me', 'remind me in 20 minutes', 'delete the file called taxes', 'send a message to mum saying hello',
   'play something nice'
 ]) assert.equal(parse(text), null, JSON.stringify(text))
+
+// a near miss is asked about, never guessed (issue #5); o.apps is the installed-apps list
+assert.deepEqual(parse('open gihub'), { kind: 'say', text: 'Did you mean open Github? Say it again to open it.' })
+assert.deepEqual(parse('open noteped', { apps: ['Notepad', 'Calculator'] }), { kind: 'say', text: 'Did you mean open Notepad? Say it again to open it.' })
+assert.deepEqual(parse('open spotofy', { apps: ['Notepad'] }), { kind: 'say', text: 'Did you mean open Spotify? Say it again to open it.' })
+
+// the fuzzy matching never reaches the send/delete style commands: their patterns stay exact
+for (const text of ['send a whats app to mum saying hi', 'whats app message to mum saying hi', 'whats app to mum saying hi', 'forgeet everything']) assert.equal(parse(text), null, JSON.stringify(text))
+// ...while the exact wordings still reach their tool, confirmation and all
+assert.deepEqual(parse('send a whatsapp message to mum saying hi'), tool('whatsapp_send', { to: 'mum', text: 'hi' }))
 
 console.log('fastpath: ALL PASS')

@@ -11,6 +11,9 @@
  */
 const fs = require('node:fs')
 const path = require('node:path')
+const retryMod = require('./router/retry')
+const ledgerMod = require('./router/ledger')
+const healthMod = require('./router/health')
 
 const MAX_ONLINE_TRIES = 3
 const ONLINE_TIMEOUT_MS = 25_000
@@ -36,28 +39,64 @@ const PRESETS = {
     baseUrl: 'https://integrate.api.nvidia.com/v1',
     models: ['meta/llama-3.3-70b-instruct', 'meta/llama-3.1-70b-instruct', 'nvidia/llama-3.1-nemotron-70b-instruct', 'meta/llama-3.1-8b-instruct', 'deepseek-ai/deepseek-v3.1'],
     signup: 'https://build.nvidia.com/',
-    hint: 'Free key starting nvapi-… (about 40 requests/min). Terms: prototyping use.'
+    hint: 'Free key starting nvapi-… (about 40 requests/min). Terms: prototyping use.',
+    limits: { rpm: 40 },
+    privacy: { level: 'unknown', note: 'Trial terms: evaluation use only.' }
   },
   groq: {
     name: 'Groq',
     baseUrl: 'https://api.groq.com/openai/v1',
     models: ['llama-3.3-70b-versatile', 'openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'llama-3.1-8b-instant', 'qwen/qwen3-32b'],
     signup: 'https://console.groq.com/keys',
-    hint: 'Free, very fast. Key starts gsk_…'
+    hint: 'Free, very fast. Key starts gsk_…',
+    limits: { rpm: 30, rpd: 1000 },
+    privacy: { level: 'unknown', note: 'Check Groq’s terms for how API data is used.' }
   },
   gemini: {
     name: 'Google Gemini (AI Studio)',
     baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
     models: ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.5-flash-lite', 'gemini-2.0-flash'],
     signup: 'https://aistudio.google.com/apikey',
-    hint: 'Free, no card. The free tier may be used to improve Google’s models.'
+    hint: 'Free, no card. The free tier may be used to improve Google’s models.',
+    limits: { rpm: 10, rpd: 250 },
+    privacy: { level: 'trains', note: 'The free tier may be used to improve Google’s models.' }
   },
   openrouter: {
     name: 'OpenRouter (free models)',
     baseUrl: 'https://openrouter.ai/api/v1',
     models: ['openrouter/free', 'meta-llama/llama-3.3-70b-instruct:free'],
     signup: 'https://openrouter.ai/keys',
-    hint: 'Free models end in :free (about 20 requests/min, 50/day; 1000/day after a one-time $10 top-up).'
+    hint: 'Free models end in :free (about 20 requests/min, 50/day; 1000/day after a one-time $10 top-up).',
+    limits: { rpm: 20, rpd: 50 },
+    privacy: { level: 'varies', note: 'Depends on which free model answers.' }
+  },
+  cerebras: {
+    name: 'Cerebras',
+    baseUrl: 'https://api.cerebras.ai/v1',
+    models: ['gpt-oss-120b', 'llama-3.3-70b', 'qwen-3-32b', 'llama3.1-8b'],
+    signup: 'https://cloud.cerebras.ai/',
+    hint: 'Free and extremely fast (about 30 requests/min). A good second key next to Groq.',
+    limits: { rpm: 30 },
+    privacy: { level: 'unknown', note: 'Check Cerebras’s terms for how API data is used.' }
+  },
+  mistral: {
+    name: 'Mistral (La Plateforme)',
+    baseUrl: 'https://api.mistral.ai/v1',
+    models: ['mistral-small-latest', 'open-mistral-nemo', 'mistral-medium-latest'],
+    signup: 'https://console.mistral.ai/api-keys',
+    hint: 'Free "Experiment" plan. Only about 2 requests/min, so it works as a background fallback.',
+    limits: { rpm: 2 },
+    privacy: { level: 'unknown', note: 'The free plan may use your data to improve models; check Mistral’s terms.' }
+  },
+  freellmapi: {
+    name: 'FreeLLMAPI (running on this PC)',
+    baseUrl: 'http://127.0.0.1:3001/v1',
+    editableUrl: true,
+    models: ['auto'],
+    signup: '',
+    hint: 'Only if you run FreeLLMAPI yourself. Its router chooses the provider, so what you say may reach providers Jarvis cannot vet. Paste its unified key.',
+    limits: {},
+    privacy: { level: 'varies', note: 'FreeLLMAPI decides which provider receives each request.' }
   },
   custom: {
     name: 'Custom (any OpenAI-compatible URL)',
@@ -104,13 +143,7 @@ function classify(status, headers, bodyText, err) {
   })()
   if (status === 401 || status === 403) return { kind: 'auth', message: 'the key was rejected' }
   if (status === 429) {
-    const ra = headers && typeof headers.get === 'function' ? headers.get('retry-after') : null
-    let ms
-    if (ra) {
-      const secs = Number(ra)
-      ms = Number.isFinite(secs) ? secs * 1000 : Math.max(0, Date.parse(ra) - Date.now())
-    }
-    return { kind: 'rate', retryAfterMs: Number.isFinite(ms) ? ms : undefined, message: 'rate limit reached' }
+    return { kind: 'rate', retryAfterMs: retryMod.retryAfterMs({ headers, body: bodyText }), daily: retryMod.isDailyLimit(bodyText), message: 'rate limit reached' }
   }
   if (status === 404 || (status === 400 && /model/i.test(msg))) return { kind: 'model', message: `model problem: ${msg}` }
   if (status >= 500) return { kind: 'server', message: `provider error ${status}` }
@@ -143,7 +176,7 @@ function createBrain(deps) {
   const doFetch = deps.fetch
   const now = deps.now || Date.now
   /** @type {{naturalChat:boolean, entries:any[]}} */
-  let store = { naturalChat: true, entries: [] }
+  let store = { naturalChat: true, smartOrder: deps.smartOrder !== false, entries: [] }
   /** runtime state per entry id: fails, until (cooldown end), bad, lastError, lastOk, model */
   const rt = new Map()
   let lastChain = []
@@ -152,7 +185,7 @@ function createBrain(deps) {
   function load() {
     try {
       const j = JSON.parse(fs.readFileSync(file, 'utf8'))
-      if (j && Array.isArray(j.entries)) store = { naturalChat: j.naturalChat !== false, entries: j.entries.filter((e) => e && e.id && PRESETS[e.provider] && typeof e.enc === 'string').slice(0, MAX_ENTRIES) }
+      if (j && Array.isArray(j.entries)) store = { naturalChat: j.naturalChat !== false, smartOrder: j.smartOrder === undefined ? store.smartOrder : j.smartOrder !== false, entries: j.entries.filter((e) => e && e.id && PRESETS[e.provider] && typeof e.enc === 'string').slice(0, MAX_ENTRIES) }
     } catch {
       /* first run */
     }
@@ -162,6 +195,10 @@ function createBrain(deps) {
     fs.writeFileSync(file, JSON.stringify({ version: 1, ...store }, null, 2))
   }
   load()
+
+  const ledger = deps.ledger || ledgerMod.create({ file: deps.quotaFile, now })
+  const health = deps.health || healthMod.create({ now })
+  const limitsOf = (e) => ({ ...(PRESETS[e.provider].limits || {}) })
 
   const state = (id) => {
     if (!rt.has(id)) rt.set(id, { fails: 0, until: 0, bad: false, lastError: '', lastOk: 0, model: '', badModels: new Set(), cands: null, candsAt: 0 })
@@ -192,11 +229,14 @@ function createBrain(deps) {
         enabled: e.enabled !== false,
         status: s.bad ? 'bad' : cooling ? 'cooling' : s.lastOk ? 'ok' : 'untested',
         cooldownS: cooling ? Math.ceil((s.until - now()) / 1000) : 0,
-        lastError: s.lastError
+        lastError: s.lastError,
+        usage: ledger.usage(e.id, limitsOf(e)),
+        privacy: PRESETS[e.provider].privacy || { level: 'unknown', note: '' },
+        avgFirstWordMs: health.avgTtfb(e.id)
       }
     })
   }
-  const getSettings = () => ({ naturalChat: store.naturalChat, canEncrypt: !!crypt.available() })
+  const getSettings = () => ({ naturalChat: store.naturalChat, smartOrder: store.smartOrder, canEncrypt: !!crypt.available() })
 
   // ---------- editing
   function add({ provider, key, label, model, baseUrl }) {
@@ -205,8 +245,9 @@ function createBrain(deps) {
     const k = cleanKey(key)
     if (!k) throw new Error('that does not look like an API key')
     if (!crypt.available()) throw new Error('Windows encryption is unavailable, so I will not store the key')
-    const url = provider === 'custom' ? cleanBaseUrl(baseUrl) : ''
-    if (provider === 'custom' && !url) throw new Error('enter a valid https:// base URL')
+    const urlEditable = provider === 'custom' || !!PRESETS[provider].editableUrl
+    const url = urlEditable ? cleanBaseUrl(baseUrl || PRESETS[provider].baseUrl) : ''
+    if (urlEditable && !url) throw new Error('enter a valid https:// base URL')
     const entry = {
       id: Math.random().toString(36).slice(2, 10),
       provider,
@@ -231,7 +272,7 @@ function createBrain(deps) {
       Object.assign(state(id), { model: '', cands: null, badModels: new Set() })
     }
     if (patch.enabled !== undefined) e.enabled = !!patch.enabled
-    if (patch.baseUrl !== undefined && e.provider === 'custom') {
+    if (patch.baseUrl !== undefined && (e.provider === 'custom' || PRESETS[e.provider].editableUrl)) {
       const url = cleanBaseUrl(patch.baseUrl)
       if (!url) throw new Error('enter a valid https:// base URL')
       e.baseUrl = url
@@ -250,6 +291,8 @@ function createBrain(deps) {
   function remove(id) {
     store.entries = store.entries.filter((e) => e.id !== id)
     rt.delete(id)
+    ledger.forget(id)
+    health.forget(id)
     save()
   }
 
@@ -261,6 +304,11 @@ function createBrain(deps) {
     save()
   }
 
+  function setSmartOrder(on) {
+    store.smartOrder = !!on
+    save()
+  }
+
   function setNaturalChat(on) {
     store.naturalChat = !!on
     save()
@@ -268,6 +316,7 @@ function createBrain(deps) {
 
   // ---------- talking to a provider
   async function request(url, init, timeoutMs) {
+    const t0 = Date.now()
     let res
     try {
       res = await doFetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) })
@@ -282,7 +331,7 @@ function createBrain(deps) {
     }
     if (!res.ok) return { ok: false, status: res.status, ...classify(res.status, res.headers, text) }
     try {
-      return { ok: true, json: JSON.parse(text) }
+      return { ok: true, json: JSON.parse(text), ttfbMs: Date.now() - t0 }
     } catch {
       return { ok: false, kind: 'server', message: 'the provider sent something that is not JSON' }
     }
@@ -293,10 +342,11 @@ function createBrain(deps) {
    * An error BEFORE the first token is a normal failure (the next key is tried); after tokens have started
    * the partial answer is kept ({ok:true, partial:true}) rather than starting over with another provider.
    */
-  async function requestStream(url, init, onDelta, timeoutMs) {
+  async function requestStream(url, init, onDelta, timeoutMs, firstTokenMs) {
+    const t0 = Date.now()
     const ctl = new AbortController()
     const overall = setTimeout(() => ctl.abort(Object.assign(new Error('timed out'), { name: 'TimeoutError' })), timeoutMs)
-    let firstTokenWatchdog = setTimeout(() => ctl.abort(Object.assign(new Error('no first token in time'), { name: 'TimeoutError' })), Math.min(timeoutMs, deps.firstTokenMs || FIRST_TOKEN_MS))
+    let firstTokenWatchdog = setTimeout(() => ctl.abort(Object.assign(new Error('no first token in time'), { name: 'TimeoutError' })), Math.min(timeoutMs, deps.firstTokenMs || firstTokenMs || FIRST_TOKEN_MS))
     const done = () => {
       clearTimeout(overall)
       clearTimeout(firstTokenWatchdog)
@@ -332,7 +382,7 @@ function createBrain(deps) {
           } catch {
             /* listener bug */
           }
-        return { ok: true, text, toolCalls }
+        return { ok: true, text, toolCalls, ttfbMs: Date.now() - t0 }
       } catch (err) {
         done()
         return { ok: false, ...classify(0, null, '', err) }
@@ -342,6 +392,7 @@ function createBrain(deps) {
     let buf = ''
     let got = false
     const frag = new Map() // streamed tool calls arrive in pieces, keyed by index
+    let ttfbMs = 0
     try {
       const reader = res.body.getReader()
       const dec = new TextDecoder()
@@ -371,6 +422,7 @@ function createBrain(deps) {
             frag.set(i, cur)
             if (!got) {
               got = true
+              ttfbMs = Date.now() - t0
               clearTimeout(firstTokenWatchdog)
             }
           }
@@ -378,6 +430,7 @@ function createBrain(deps) {
           if (typeof piece === 'string' && piece) {
             if (!got) {
               got = true
+              ttfbMs = Date.now() - t0
               clearTimeout(firstTokenWatchdog)
             }
             full += piece
@@ -396,7 +449,7 @@ function createBrain(deps) {
     }
     done()
     const toolCalls = [...frag.entries()].sort((a, b) => a[0] - b[0]).map(([, c], n) => ({ id: c.id || 'call_' + (n + 1), name: c.name, arguments: c.arguments || '{}' })).filter((c) => c.name)
-    return full || toolCalls.length ? { ok: true, text: full, toolCalls } : { ok: false, kind: 'server', message: 'empty answer' }
+    return full || toolCalls.length ? { ok: true, text: full, toolCalls, ttfbMs } : { ok: false, kind: 'server', message: 'empty answer' }
   }
 
   /** ids of the chat models this key can see, best candidates first */
@@ -450,13 +503,13 @@ function createBrain(deps) {
       const body = { model, messages, temperature: 0.65, max_tokens: tools ? 420 : 280, stream: !!onDelta }
       if (tools) Object.assign(body, { tools, tool_choice: 'auto' })
       const init = { method: 'POST', headers, body: JSON.stringify(body) }
-      const r = onDelta ? await requestStream(`${base}/chat/completions`, init, onDelta, ONLINE_STREAM_MS) : await request(`${base}/chat/completions`, init, ONLINE_TIMEOUT_MS)
+      const r = onDelta ? await requestStream(`${base}/chat/completions`, init, onDelta, ONLINE_STREAM_MS, health.ttfbBudget(e.id)) : await request(`${base}/chat/completions`, init, ONLINE_TIMEOUT_MS)
       if (r.ok) {
         const text = (r.text !== undefined ? r.text : extractText(r.json)).trim()
         const toolCalls = r.toolCalls !== undefined ? r.toolCalls : extractToolCalls(r.json)
         if (!text && !toolCalls.length) return { ok: false, kind: 'server', message: 'empty answer' }
         s.model = model
-        return { ok: true, text, toolCalls, model }
+        return { ok: true, text, toolCalls, model, ttfbMs: r.ttfbMs }
       }
       if (r.kind === 'model') {
         // "not found for this account" and friends: that model is not switched on for this key, try the next one
@@ -495,7 +548,10 @@ function createBrain(deps) {
     s.lastError = r.message
     const backoff = (base, cap) => Math.min(cap, base * 2 ** Math.min(s.fails - 1, 6))
     if (r.kind === 'auth') s.bad = true
-    else if (r.kind === 'rate') s.until = now() + (r.retryAfterMs !== undefined ? Math.min(r.retryAfterMs, 3600_000) : backoff(60_000, 15 * 60_000))
+    else if (r.kind === 'rate' && r.daily) {
+      ledger.blockUntilMidnight(e.id)
+      s.until = ledger.nextUtcMidnight(now())
+    } else if (r.kind === 'rate') s.until = now() + (r.retryAfterMs !== undefined ? Math.min(r.retryAfterMs, 3600_000) : backoff(60_000, 15 * 60_000))
     else if (r.kind === 'model') {
       s.until = now() + 5 * 60_000
       s.model = '' // look the model list up again next time
@@ -510,7 +566,19 @@ function createBrain(deps) {
   async function chat(messages, onDelta, opts = {}) {
     const tools = opts.tools && opts.tools.length ? opts.tools : undefined
     const chain = []
-    const usable = store.entries.filter((e) => e.enabled !== false && !state(e.id).bad && state(e.id).until <= now())
+    const estTokens = Math.ceil(JSON.stringify(messages).length / 4) + 300
+    const candidates = store.entries.filter((e) => e.enabled !== false && !state(e.id).bad && state(e.id).until <= now())
+    let usable = []
+    for (const e of candidates) {
+      const c = ledger.check(e.id, limitsOf(e), estTokens)
+      if (c.ok) usable.push(e)
+      else chain.push(`${e.label}: used up for now (back in about ${c.waitMs > 3600_000 ? Math.round(c.waitMs / 3600_000) + ' h' : Math.max(1, Math.round(c.waitMs / 60_000)) + ' min'})`)
+    }
+    if (store.smartOrder && usable.length > 1) {
+      // healthy and fast keys first; the order you set breaks ties
+      const rank = new Map(usable.map((e, i) => [e.id, i]))
+      usable = [...usable].sort((a, b) => Math.round(health.score(b.id) * 20) - Math.round(health.score(a.id) * 20) || rank.get(a.id) - rank.get(b.id))
+    }
     let tries = 0
     for (const e of usable) {
       if (tries >= MAX_ONLINE_TRIES) break
@@ -519,11 +587,14 @@ function createBrain(deps) {
       if (r.ok) {
         const s = state(e.id)
         Object.assign(s, { fails: 0, until: 0, bad: false, lastError: '', lastOk: now() })
+        ledger.record(e.id, estTokens + Math.ceil((r.text || '').length / 4))
+        health.success(e.id, r.ttfbMs)
         chain.push(`${e.label}: ok`)
         lastChain = chain
         return { ok: true, text: r.text, toolCalls: r.toolCalls || [], via: `${e.label} (${r.model})`, chain }
       }
       penalise(e, r)
+      if (r.kind !== 'auth') health.failure(e.id)
       chain.push(`${e.label}: ${r.message}`)
     }
     const local = await callLocal(messages, onDelta, tools)
@@ -608,7 +679,7 @@ function createBrain(deps) {
     return false
   }
 
-  return { list, getSettings, add, update, remove, move, setNaturalChat, chat, transcribe, canTranscribe, test, ready, lastChain: () => lastChain, _state: state }
+  return { list, getSettings, add, update, remove, move, setNaturalChat, setSmartOrder, chat, transcribe, canTranscribe, test, ready, lastChain: () => lastChain, _state: state }
 }
 
 module.exports = { createBrain, PRESETS, classify, extractText, cleanBaseUrl, cleanKey, MAX_ONLINE_TRIES, OLLAMA_BASE }

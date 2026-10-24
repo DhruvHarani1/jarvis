@@ -4,7 +4,9 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
-const B = require('../brain')
+const B0 = require('../brain')
+// these tests are about order and cooldowns exactly as the user set them; smart ordering has its own tests (brain-router-test.js)
+const B = { ...B0, createBrain: (d) => B0.createBrain({ smartOrder: false, ...d }) }
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'brain-test-'))
 const mk = (name) => path.join(tmp, name + '.json')

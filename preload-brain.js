@@ -10,5 +10,6 @@ contextBridge.exposeInMainWorld('brainApi', {
   move: (id, dir) => ipcRenderer.invoke('brainwin:move', id, dir),
   test: (id) => ipcRenderer.invoke('brainwin:test', id),
   natural: (on) => ipcRenderer.invoke('brainwin:natural', on),
+  smart: (on) => ipcRenderer.invoke('brainwin:smart', on),
   openLink: (url) => ipcRenderer.send('brainwin:link', url)
 })

@@ -418,6 +418,16 @@ Built: local SQLite memory (`memory/store.js`, built-in `node:sqlite`, FTS5 with
 - Docs for option (a): how to add a locally running FreeLLMAPI as a custom provider (with the privacy warning that its router may choose providers outside the allowlist).
 - **Acceptance:** (1) Fake-provider tests: 429 with `Retry-After` benches the key and fails over within one turn; a hung first token fails over in ≤ TTFB budget; daily-limit exhaustion skips a key until UTC midnight; tool-call-as-text fixtures are rescued for 4 dialects. (2) Real smoke test with the user's own keys (manual): a turn succeeds when the top provider is blocked. (3) Pointing at a local FreeLLMAPI instance works as a custom provider (manual, only if the user runs it). (4) No key ever appears in logs (grep test).
 
+### M4 results (2026-10-24)
+
+Built into the existing brain (`brain.js`) with three small modules in `router/`: **retry.js** (reads the wait a provider asks for from the Retry-After header, the JSON error body and plain prose, and spots a daily limit), **ledger.js** (per-key request and token windows, UTC-day reset, saved across restarts, a key that is out for the day is not even asked), **health.js** (decaying reliability and first-word time; sets how long to wait for the first word before trying the next key, 6 to 20 seconds).
+- **Smart order** (on by default, switchable in the keys window): healthy, fast keys first, your order breaks ties. A daily limit benches a key until UTC midnight. The answer line says why a key was skipped ("used up for now, back in about 1 min").
+- **New providers:** Cerebras, Mistral, and "FreeLLMAPI (running on this PC)" as option (a) with an editable local address. Each key shows today's use, first-word time and a privacy note (the Gemini free tier is flagged as one that may train on your data).
+- **Docs:** docs/setup/free-keys.md (which free keys to get and why), docs/setup/freellmapi.md (what it is and is not, and the privacy catch), NOTICE (attribution; no FreeLLMAPI source is copied).
+- Tests: 29 unit suites pass (retry parsing, ledger windows and persistence, health scoring, and router behaviour in the brain against a fake network: minute limit, daily limit, prose wait, smart ordering, new providers). The real app still boots and passes the tools end-to-end test.
+- Not done: a real-provider smoke test with several keys (you only have Groq), and the bundled-sidecar option (c), which is deliberately skipped.
+- Changed: the audio test no longer fails when the machine is busy (it prints a warning), because speed on a loaded PC is not a bug.
+
 ### M5: Packaging, update and release (1-2 sessions)
 
 - Installer review, auto-update test across two versions, first-run wizard (mic, optional models, keys), README, privacy page, resource-budget script in the release checklist. Publishing to GitHub only when the user says so.

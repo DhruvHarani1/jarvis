@@ -1,0 +1,22 @@
+Jarvis
+Copyright (c) 2026 Dhruv Harani. MIT licence (see LICENSE).
+
+This product uses the following third-party software and ideas.
+
+FreeLLMAPI (https://github.com/tashfeenahmed/freellmapi), MIT licence, Copyright (c) the FreeLLMAPI authors.
+  Jarvis's provider router follows several ideas first seen in FreeLLMAPI: reading the wait time a provider asks for from the
+  Retry-After header, the JSON error body and plain prose (router/retry.js); per-key request and token quota windows with UTC-day
+  reset (router/ledger.js); an exponentially decaying reliability score and first-word timing (router/health.js); rescuing tool calls
+  that a model writes as text (tools/rescue.js). The code in this repository is a fresh implementation written for Jarvis; no
+  FreeLLMAPI source file is copied.
+
+sherpa-onnx (https://github.com/k2-fsa/sherpa-onnx), Apache License 2.0.
+  Speech recognition, text to speech and keyword spotting run through the sherpa-onnx-node package.
+
+Models downloaded on demand (never bundled), each with its own licence shown before download:
+  Moonshine base English (MIT); sherpa-onnx KWS zipformer gigaspeech (Apache-2.0); Piper voice "Alan" en_GB (see the voice's MODEL_CARD).
+
+piper-phonemize-node (GPL-3.0-or-later), downloaded as a separate optional component and loaded at run time. It is not linked into
+  or distributed with Jarvis. It is only needed for the Piper natural voice; without it Jarvis uses the Windows voice.
+
+Electron (MIT), electron-updater (MIT).

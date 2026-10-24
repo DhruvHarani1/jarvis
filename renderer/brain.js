@@ -26,6 +26,7 @@
       onProvider()
     }
     $('natural').checked = s.settings.naturalChat
+    $('smart').checked = s.settings.smartOrder
     const warn = $('warn')
     warn.hidden = s.settings.canEncrypt
     if (!s.settings.canEncrypt) warn.textContent = 'Windows encryption is not available for this user, so keys cannot be stored safely. Jarvis will refuse to save them.'
@@ -50,12 +51,23 @@
             el('button', { onclick: () => replaceKey(e.id), title: 'Paste a new key for this entry' }, 'New key'),
             el('button', { class: 'danger', onclick: () => confirm(`Delete "${e.label}"?`) && act(() => window.brainApi.remove(e.id)), title: 'Delete' }, '✕')
           ),
-          el('div', { class: 's', id: `msg-${e.id}` }, e.lastError ? `Last problem: ${e.lastError}` : '')
+          el('div', { class: 's', id: `msg-${e.id}` }, usageLine(e) + (e.lastError ? `  ·  Last problem: ${e.lastError}` : '')),
+          el('div', { class: 's' }, e.privacy && e.privacy.note ? `${e.privacy.level === 'trains' ? '⚠ ' : ''}Privacy: ${e.privacy.note}` : '')
         )
       })
     )
     $('ollama').textContent = s.ollama.available ? `Running — will use ${s.ollama.model}.` : 'Not found. (That is fine if your online keys work.)'
     $('chain').textContent = s.chain.length ? s.chain.join('  →  ') : 'Nothing asked yet.'
+  }
+
+  /** "today 12 of 1000 requests · first word 640 ms" */
+  function usageLine(e) {
+    const u = e.usage || {}
+    const parts = []
+    if (u.rpdLimit) parts.push(`today ${u.rpdUsed} of ${u.rpdLimit} requests`)
+    else parts.push(`today ${u.rpdUsed || 0} requests`)
+    if (e.avgFirstWordMs) parts.push(`first word ${e.avgFirstWordMs} ms`)
+    return parts.join(' · ')
   }
 
   async function act(fn) {
@@ -91,7 +103,8 @@
     const p = presets[$('provider').value]
     if (!p) return
     $('hint').textContent = p.hint + (p.models.length ? ` Default model: ${p.models[0]} (auto-detected from your key).` : '')
-    $('urlRow').hidden = $('provider').value !== 'custom'
+    $('urlRow').hidden = !(p.editableUrl || $('provider').value === 'custom')
+    if (p.editableUrl && !$('baseUrl').value) $('baseUrl').value = p.baseUrl
     $('get').hidden = !p.signup
   }
 
@@ -101,6 +114,7 @@
     const b = e.target.closest('button[data-url]')
     if (b) window.brainApi.openLink(b.dataset.url)
   })
+  $('smart').addEventListener('change', () => act(() => window.brainApi.smart($('smart').checked)))
   $('natural').addEventListener('change', () => act(() => window.brainApi.natural($('natural').checked)))
 
   $('add').addEventListener('click', async () => {

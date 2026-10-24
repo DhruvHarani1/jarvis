@@ -547,6 +547,7 @@ let brainWin = null
 function initBrain() {
   brain = createBrain({
     file: path.join(app.getPath('userData'), 'brain.json'),
+    quotaFile: path.join(app.getPath('userData'), 'quota.json'),
     fetch: (...a) => fetch(...a),
     crypt: {
       available: () => safeStorage.isEncryptionAvailable(),
@@ -700,6 +701,11 @@ ipcMain.handle('brainwin:move', (e, id, dir) => {
   return { ok: true }
 })
 ipcMain.handle('brainwin:test', (e, id) => (fromBrainWin(e) && typeof id === 'string' ? brain.test(id) : fail('not allowed')))
+ipcMain.handle('brainwin:smart', (e, on) => {
+  if (!fromBrainWin(e)) return fail('not allowed')
+  brain.setSmartOrder(!!on)
+  return { ok: true }
+})
 ipcMain.handle('brainwin:natural', (e, on) => {
   if (!fromBrainWin(e)) return fail('not allowed')
   brain.setNaturalChat(!!on)

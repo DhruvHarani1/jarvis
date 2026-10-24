@@ -1,7 +1,7 @@
 {
   "name": "jarvis",
   "productName": "Jarvis",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Jarvis: a voice-first AI assistant for Windows. Talk to it, ask it things, let it read your notifications. Moved out of Spidey Sense.",
   "main": "main.js",
   "private": true,

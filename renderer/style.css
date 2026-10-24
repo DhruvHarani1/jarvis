@@ -116,3 +116,6 @@ body[data-wake='1'] .stage::after { content: 'WAKE WORD ON'; position: absolute;
 .dlbar { margin-top: 4px; height: 5px; background: rgba(56, 200, 255, 0.16); border-radius: 3px; overflow: hidden; }
 .dlbar i { display: block; height: 100%; width: 0; background: var(--accent); box-shadow: 0 0 8px var(--accent); transition: width 0.2s; }
 body[data-dl='1'] .settings { top: 78px; }
+
+.recs { margin: 8px 0; padding-left: 18px; font-size: 13px; }
+.recs li { margin: 4px 0; }

@@ -40,7 +40,7 @@ const PRESETS = {
   nvidia: {
     name: 'NVIDIA (build.nvidia.com)',
     baseUrl: 'https://integrate.api.nvidia.com/v1',
-    models: ['meta/llama-3.3-70b-instruct', 'meta/llama-3.1-70b-instruct', 'nvidia/llama-3.1-nemotron-70b-instruct', 'meta/llama-3.1-8b-instruct', 'deepseek-ai/deepseek-v3.1'],
+    models: ['deepseek-ai/deepseek-v3.1', 'qwen/qwen3-235b-a22b', 'meta/llama-3.1-405b-instruct', 'meta/llama-3.3-70b-instruct', 'nvidia/llama-3.1-nemotron-70b-instruct', 'meta/llama-3.1-70b-instruct'],
     signup: 'https://build.nvidia.com/',
     hint: 'Free key starting nvapi-… (about 40 requests/min). Terms: prototyping use.',
     limits: { rpm: 40 },
@@ -49,7 +49,7 @@ const PRESETS = {
   groq: {
     name: 'Groq',
     baseUrl: 'https://api.groq.com/openai/v1',
-    models: ['llama-3.3-70b-versatile', 'openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'llama-3.1-8b-instant', 'qwen/qwen3-32b'],
+    models: ['openai/gpt-oss-120b', 'llama-3.3-70b-versatile', 'qwen/qwen3-32b', 'openai/gpt-oss-20b', 'llama-3.1-8b-instant'],
     signup: 'https://console.groq.com/keys',
     hint: 'Free, very fast. Key starts gsk_…',
     limits: { rpm: 30, rpd: 1000 },
@@ -58,7 +58,7 @@ const PRESETS = {
   gemini: {
     name: 'Google Gemini (AI Studio)',
     baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
-    models: ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.5-flash-lite', 'gemini-2.0-flash'],
+    models: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.5-flash-lite', 'gemini-2.0-flash'],
     signup: 'https://aistudio.google.com/apikey',
     hint: 'Free, no card. The free tier may be used to improve Google’s models.',
     limits: { rpm: 10, rpd: 250 },
@@ -67,7 +67,7 @@ const PRESETS = {
   openrouter: {
     name: 'OpenRouter (free models)',
     baseUrl: 'https://openrouter.ai/api/v1',
-    models: ['openrouter/free', 'meta-llama/llama-3.3-70b-instruct:free'],
+    models: ['deepseek/deepseek-chat-v3.1:free', 'qwen/qwen3-235b-a22b:free', 'openai/gpt-oss-120b:free', 'deepseek/deepseek-r1:free', 'meta-llama/llama-3.3-70b-instruct:free', 'openrouter/free'],
     signup: 'https://openrouter.ai/keys',
     hint: 'Free models end in :free (about 20 requests/min, 50/day; 1000/day after a one-time $10 top-up).',
     limits: { rpm: 20, rpd: 50 },
@@ -76,7 +76,7 @@ const PRESETS = {
   cerebras: {
     name: 'Cerebras',
     baseUrl: 'https://api.cerebras.ai/v1',
-    models: ['gpt-oss-120b', 'llama-3.3-70b', 'qwen-3-32b', 'llama3.1-8b'],
+    models: ['gpt-oss-120b', 'qwen-3-235b-a22b-instruct-2507', 'llama-3.3-70b', 'qwen-3-32b', 'llama3.1-8b'],
     signup: 'https://cloud.cerebras.ai/',
     hint: 'Free and extremely fast (about 30 requests/min). A good second key next to Groq.',
     limits: { rpm: 30 },
@@ -85,11 +85,29 @@ const PRESETS = {
   mistral: {
     name: 'Mistral (La Plateforme)',
     baseUrl: 'https://api.mistral.ai/v1',
-    models: ['mistral-small-latest', 'open-mistral-nemo', 'mistral-medium-latest'],
+    models: ['mistral-medium-latest', 'mistral-small-latest', 'open-mistral-nemo'],
     signup: 'https://console.mistral.ai/api-keys',
     hint: 'Free "Experiment" plan. Only about 2 requests/min, so it works as a background fallback.',
     limits: { rpm: 2 },
     privacy: { level: 'unknown', note: 'The free plan may use your data to improve models; check Mistral’s terms.' }
+  },
+  sambanova: {
+    name: 'SambaNova Cloud',
+    baseUrl: 'https://api.sambanova.ai/v1',
+    models: ['DeepSeek-V3.1', 'gpt-oss-120b', 'Meta-Llama-3.3-70B-Instruct'],
+    signup: 'https://cloud.sambanova.ai/apis',
+    hint: 'Free tier with big models (DeepSeek V3.1, gpt-oss-120b) and fast answers; modest daily limits.',
+    limits: { rpm: 20 },
+    privacy: { level: 'unknown', note: 'Check SambaNova’s terms for how API data is used.' }
+  },
+  github: {
+    name: 'GitHub Models',
+    baseUrl: 'https://models.github.ai/inference',
+    models: ['openai/gpt-4.1', 'deepseek/DeepSeek-V3-0324', 'openai/gpt-4o', 'meta/Llama-3.3-70B-Instruct'],
+    signup: 'https://github.com/settings/personal-access-tokens/new',
+    hint: 'Uses a GitHub token with the "Models: read" permission. Free for prototyping, small daily limits, but GPT-4.1-class answers.',
+    limits: { rpm: 10, rpd: 50 },
+    privacy: { level: 'unknown', note: 'Prototyping terms; check GitHub’s terms.' }
   },
   freellmapi: {
     name: 'FreeLLMAPI (running on this PC)',
@@ -455,7 +473,19 @@ function createBrain(deps) {
     return full || toolCalls.length ? { ok: true, text: full, toolCalls, ttfbMs } : { ok: false, kind: 'server', message: 'empty answer' }
   }
 
-  /** ids of the chat models this key can see, best candidates first */
+  /** how smart a model is, 1..5, judged from its name (the free tiers hide the rest) */
+const QUALITY_TOP = /gpt-oss-120b|gemini-2\.5-pro|deepseek-(v3|r1|chat)|qwen3?-?235|405b|mistral-(medium|large)|gpt-4\.1|gpt-4o(?!-mini)|kimi|glm-4\.[5-9]|nemotron-ultra|gemini-2\.5-flash(?!-lite)/i
+const QUALITY_GOOD = /70b|gemini-flash-latest|gpt-oss-20b|nemotron-70b|mistral-small|qwen3?-?(30|32)b|gemini-2.0-flash(?!-lite)|llama-4/i
+const QUALITY_SMALL = /lite|nano|instant|(^|[^0-9])(1|3|4|7|8|9)b(?![0-9])|(^|[-_/])mini|tiny/i
+function modelQuality(id) {
+  const m = String(id || '')
+  if (QUALITY_SMALL.test(m)) return 2
+  if (QUALITY_TOP.test(m)) return 5
+  if (QUALITY_GOOD.test(m)) return 4
+  return 3
+}
+
+/** ids of the chat models this key can see, best candidates first */
   function rankModels(ids, e) {
     const preferred = PRESETS[e.provider].models.filter((m) => ids.includes(m))
     const rest = ids.filter((i) => !preferred.includes(i) && !BAD_MODEL.test(i) && (GOOD_HINT.test(i) || e.provider === 'custom'))
@@ -503,7 +533,7 @@ function createBrain(deps) {
       if (s.badModels.has(model)) continue
       if (tried >= MAX_MODEL_TRIES) break
       tried++
-      const body = { model, messages, temperature: 0.65, max_tokens: tools ? 420 : 280, stream: !!onDelta }
+      const body = { model, messages, temperature: 0.35, max_tokens: tools ? 420 : 280, stream: !!onDelta }
       if (tools) Object.assign(body, { tools, tool_choice: 'auto' })
       const init = { method: 'POST', headers, body: JSON.stringify(body) }
       const r = onDelta ? await requestStream(`${base}/chat/completions`, init, onDelta, ONLINE_STREAM_MS, health.ttfbBudget(e.id)) : await request(`${base}/chat/completions`, init, ONLINE_TIMEOUT_MS)
@@ -535,7 +565,7 @@ function createBrain(deps) {
     if (!deps.ollama) return { ok: false, kind: 'network', message: 'local model unavailable' }
     const st = await deps.ollama.status().catch(() => ({ available: false }))
     if (!st.available) return { ok: false, kind: 'network', message: 'Ollama is not running or has no model' }
-    const lbody = { model: st.model, messages, temperature: 0.65, max_tokens: tools ? 420 : 220, stream: !!onDelta }
+    const lbody = { model: st.model, messages, temperature: 0.35, max_tokens: tools ? 420 : 220, stream: !!onDelta }
     if (tools) Object.assign(lbody, { tools })
     const init = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(lbody) }
     const r = onDelta ? await requestStream(`${OLLAMA_BASE}/chat/completions`, init, onDelta, LOCAL_TIMEOUT_MS) : await request(`${OLLAMA_BASE}/chat/completions`, init, LOCAL_TIMEOUT_MS)
@@ -578,9 +608,10 @@ function createBrain(deps) {
       else chain.push(`${e.label}: used up for now (back in about ${c.waitMs > 3600_000 ? Math.round(c.waitMs / 3600_000) + ' h' : Math.max(1, Math.round(c.waitMs / 60_000)) + ' min'})`)
     }
     if (store.smartOrder && usable.length > 1) {
-      // healthy and fast keys first; the order you set breaks ties
+      // the smartest model first (a small fast one hallucinates), unless that key has been failing a lot; then healthy and fast; your order breaks ties
       const rank = new Map(usable.map((e, i) => [e.id, i]))
-      usable = [...usable].sort((a, b) => Math.round(health.score(b.id) * 20) - Math.round(health.score(a.id) * 20) || rank.get(a.id) - rank.get(b.id))
+      const smart = (e) => (e.provider === 'freellmapi' ? 4 : modelQuality(e.model || state(e.id).model || PRESETS[e.provider].models[0])) - (health.reliability(e.id) < 0.35 ? 3 : 0)
+      usable = [...usable].sort((a, b) => smart(b) - smart(a) || Math.round(health.score(b.id) * 20) - Math.round(health.score(a.id) * 20) || rank.get(a.id) - rank.get(b.id))
     }
     let tries = 0
     for (const e of usable) {

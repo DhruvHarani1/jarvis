@@ -139,6 +139,24 @@ const mk = (name, f, extra = {}) => B.createBrain({ file: path.join(tmp, name + 
     assert.ok(!JSON.stringify(l).includes('GEMINIKEY'), 'the key is never listed')
   }
 
+  // ---- smartest model first: a small fast model is only a fallback; new providers are in the catalog
+  {
+    assert.ok(B.PRESETS.sambanova && B.PRESETS.github)
+    const f = net((key) => ok('from ' + key.slice(0, 6)))
+    const b = mk('quality1', f)
+    b.add({ provider: 'groq', key: 'GROQKEY_cccccccc', label: 'groq small', model: 'llama-3.1-8b-instant' })
+    b.add({ provider: 'gemini', key: 'GEMINI_dddddddd', label: 'gemini', model: 'gemini-2.5-pro' })
+    b.add({ provider: 'cerebras', key: 'CEREBR_eeeeeeee', label: 'cerebras', model: 'llama-3.3-70b' })
+    assert.equal((await b.chat(msgs)).text, 'from GEMINI', 'the 2.5 Pro key is asked before the 8B key, although it was added later')
+    // when the best key is rate limited, the next smartest (70B) answers before the 8B
+    const f2 = net((key) => (key.startsWith('GEMINI') ? { status: 429, body: { error: { message: 'quota' } }, headers: { 'retry-after': '30' } } : ok('from ' + key.slice(0, 6))))
+    const b2 = mk('quality2', f2)
+    b2.add({ provider: 'groq', key: 'GROQKEY_cccccccc', label: 'groq small', model: 'llama-3.1-8b-instant' })
+    b2.add({ provider: 'gemini', key: 'GEMINI_dddddddd', label: 'gemini', model: 'gemini-2.5-pro' })
+    b2.add({ provider: 'cerebras', key: 'CEREBR_eeeeeeee', label: 'cerebras', model: 'llama-3.3-70b' })
+    assert.equal((await b2.chat(msgs)).text, 'from CEREBR')
+  }
+
   console.log('brain-router: ALL PASS')
 })().catch((e) => {
   console.error(e)

@@ -153,13 +153,27 @@
       </section>
 
       <section class="card">
-        <label class="toggle"><input type="checkbox" id="smart" /> <b>Smart order</b> <span>— try the fastest, most reliable key first (your order breaks ties). Turn off to always go top to bottom.</span></label>
+        <label class="toggle"><input type="checkbox" id="smart" /> <b>Smartest first</b> <span>— ask the key with the smartest model first (a small model is only a fallback), unless that key keeps failing. Turn off to always go top to bottom in your own order.</span></label>
       </section>
 
       <section>
         <h2>Your keys <small id="count"></small></h2>
         <div id="keys"></div>
         <p id="nokeys" class="muted" hidden>No keys yet. Add one below — a free key takes about a minute to get.</p>
+      </section>
+
+      <section class="card">
+        <h2>Want smarter, more accurate answers?</h2>
+        <p class="muted">Groq is fast but its free models are small, and small models make things up. Add one or two of these free keys; Jarvis then asks the smartest model first and uses Groq only as a quick fallback. All of them are free, no card.</p>
+        <ul class="recs">
+          <li><b>Google Gemini 2.5</b> (Pro / Flash): very smart, a great default. <button class="link" data-url="https://aistudio.google.com/apikey">Get a key ↗</button></li>
+          <li><b>OpenRouter</b>: DeepSeek V3.1, Qwen3 235B, gpt-oss-120b (free models). <button class="link" data-url="https://openrouter.ai/keys">Get a key ↗</button></li>
+          <li><b>NVIDIA</b>: DeepSeek V3.1, Qwen3 235B, Llama 405B. <button class="link" data-url="https://build.nvidia.com/">Get a key ↗</button></li>
+          <li><b>Cerebras</b>: gpt-oss-120b, very fast. <button class="link" data-url="https://cloud.cerebras.ai/">Get a key ↗</button></li>
+          <li><b>SambaNova</b>: DeepSeek V3.1, gpt-oss-120b. <button class="link" data-url="https://cloud.sambanova.ai/apis">Get a key ↗</button></li>
+          <li><b>GitHub Models</b>: GPT-4.1 class, small daily limit. <button class="link" data-url="https://github.com/settings/personal-access-tokens/new">Get a token ↗</button></li>
+        </ul>
+        <p class="muted">Already run <b>FreeLLMAPI</b> on this PC? Choose "FreeLLMAPI" below and paste its key: it pools many free providers behind one address.</p>
       </section>
 
       <section class="card">
@@ -285,7 +299,7 @@
 
       <section class="card">
         <h2>3. AI brain <small id="brainstate"></small></h2>
-        <p class="muted">To chat and to handle requests that are not simple commands, Jarvis needs a free AI key (Groq is the quickest, about a minute). Simple commands such as opening apps, volume, timers and music work without one.</p>
+        <p class="muted">To chat and to handle requests that are not simple commands, Jarvis needs a free AI key (Google Gemini gives the smartest answers, Groq is the quickest; about a minute each). Simple commands such as opening apps, volume, timers and music work without one.</p>
         <p><button id="brain" class="primary" data-open="brain">Add an AI key…</button></p>
       </section>
 

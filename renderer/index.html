@@ -19,6 +19,10 @@
       <button class="ib" id="hidebtn" title="Hide to tray" aria-label="Hide">–</button>
     </header>
     <main>
+      <div class="hudstrip" aria-hidden="true">
+        <canvas id="wave" height="34"></canvas>
+        <div class="gauges"><span class="gauge" id="gcpu" data-level="low"><em>CPU</em><s><i></i></s><b>–</b></span><span class="gauge" id="gram" data-level="low"><em>RAM</em><s><i></i></s><b>–</b></span></div>
+      </div>
       <ol class="log" id="log" aria-live="polite"></ol>
       <p class="caption" id="caption" role="status" aria-live="polite">Press Ctrl+Alt+Space and talk, or type below.</p>
       <div class="row">
@@ -43,6 +47,7 @@
     <script src="wake-tap.js"></script>
     <script src="voice.js"></script>
     <script src="confirm.js"></script>
+    <script src="hud.js"></script>
     <script src="inbox.js"></script>
     <script src="reader.js"></script>
   </body>

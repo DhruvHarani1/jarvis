@@ -95,6 +95,10 @@ function parse(raw, o = {}) {
   if (/^(system status|how(?:'s| is) my (?:pc|computer|laptop|system)(?: doing)?|pc status|computer status|how(?:'s| is) the pc|battery|battery level|how much battery(?: do i have| is left)?|cpu usage)$/.test(t)) return { kind: 'tool', name: 'system_status', args: {} }
   if (/^(what(?:'s| are) my reminders|list (?:my )?reminders|list (?:my )?timers|show (?:my )?reminders)$/.test(t)) return { kind: 'tool', name: 'list_reminders', args: {} }
 
+  // screen understanding (always asks first; off until switched on in the tray)
+  if (/^(?:what(?:'s| is) on my screen|what(?:'s| is) on the screen|look at (?:my|the) screen|read (?:my|the) screen|what am i looking at|describe (?:my|the) screen)$/.test(t)) return { kind: 'tool', name: 'look_at_screen', args: { question: 'Describe what is on the screen and read out anything important.' } }
+  if (/^what does this (?:error|message|warning|popup|dialog)(?: message)? say$/.test(t)) return { kind: 'tool', name: 'look_at_screen', args: { question: 'What does the error message on the screen say, and what should I do about it?' } }
+
   // the morning briefing
   if (/^(?:good morning|morning|morning briefing|brief me|give me (?:my |the )?(?:morning )?(?:briefing|brief|rundown|summary)|(?:what(?:'s| is) (?:my|the) day(?: looking)? like|what does my day look like|how(?:'s| is) my day(?: looking)?)(?: today)?|catch me up|my briefing)$/.test(t)) return { kind: 'tool', name: 'morning_briefing', args: {} }
 

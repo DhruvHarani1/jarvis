@@ -45,7 +45,7 @@ for (const f of rendererFiles) {
 }
 
 // 5) things that must NOT be in Jarvis (they live in Spidey Sense)
-for (const gone of ['guardian', 'edith', 'bugle', 'startCapture', 'capWin', 'desktopCapturer', 'taskkill']) assert.ok(!new RegExp(gone, 'i').test(main), `main.js should not mention ${gone}`)
+for (const gone of ['guardian', 'edith', 'bugle', 'startCapture', 'capWin', 'taskkill']) assert.ok(!new RegExp(gone, 'i').test(main), `main.js should not mention ${gone}`)
 for (const f of rendererFiles) assert.ok(!/window\.spidey\b/.test(read('renderer/' + f)), `${f} still uses window.spidey`)
 
 // 6) package files list covers every module main.js requires

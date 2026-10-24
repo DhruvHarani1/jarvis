@@ -128,6 +128,23 @@ const base = [{ role: 'system', content: 's' }, { role: 'user', content: 'hi' }]
     assert.equal(r.text, 'Volume 1.', 'after too many steps it reports what it did and stops')
   }
 
+  // several actions in one step are announced first (and an announcement that throws changes nothing)
+  {
+    const { rt, state } = rig()
+    const plans = []
+    const b = fakeBrain([{ toolCalls: [call('set_volume', { level: 20 }, 'a'), call('read_clipboard', {}, 'b')] }, { text: 'Done.' }])
+    await createAgent({ brain: b, runtime: rt }).run({ messages: base, onPlan: (l) => plans.push(l) })
+    assert.deepEqual(plans, [['set volume', 'read clipboard']])
+    assert.equal(state.vol, 20)
+    const one = fakeBrain([{ toolCalls: [call('set_volume', { level: 30 }, 'a')] }, { text: 'Done.' }])
+    const p2 = []
+    await createAgent({ brain: one, runtime: rig().rt }).run({ messages: base, onPlan: (l) => p2.push(l) })
+    assert.deepEqual(p2, [], 'a single action is not announced')
+    const rig3 = rig()
+    await createAgent({ brain: fakeBrain([{ toolCalls: [call('set_volume', { level: 5 }, 'a'), call('read_clipboard', {}, 'b')] }, { text: 'ok' }]), runtime: rig3.rt }).run({ messages: base, onPlan: () => { throw new Error('speech broke') } })
+    assert.equal(rig3.state.vol, 5, 'the work still happened')
+  }
+
   // provider failure is passed up
   {
     const { rt } = rig()

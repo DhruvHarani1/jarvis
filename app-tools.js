@@ -18,6 +18,7 @@ const { createMemoryTools } = require('./tools/memory')
 const { createChatTools } = require('./tools/chatapps')
 const { createPowerTools } = require('./tools/power')
 const { createBriefingTools } = require('./tools/briefing')
+const { createScreenTools } = require('./tools/screen')
 const { PS: WIN_PS } = require('./tools/windows')
 const { createAgent } = require('./agent')
 
@@ -25,7 +26,7 @@ const { createAgent } = require('./agent')
  * @param {{electron:{app:any, shell:any, clipboard:any}, userData:string, brain:()=>any, settings:()=>any, confirm:(req:any)=>Promise<boolean>,
  *          onReminder:(r:any)=>void, ps?:Function}} o
  */
-function create({ electron, userData, brain, settings, confirm, onReminder, ps, google, accountStore, memory, recentNotifications }) {
+function create({ electron, userData, brain, settings, confirm, onReminder, ps, google, accountStore, memory, recentNotifications, captureScreen }) {
   const auditLog = audit.create({ file: path.join(userData, 'activity.jsonl') })
   const sched = scheduler.create({ file: path.join(userData, 'reminders.json'), onFire: onReminder })
   const folderPath = (name) => {
@@ -61,7 +62,12 @@ function create({ electron, userData, brain, settings, confirm, onReminder, ps, 
     ? async (command) => (fs.appendFileSync(process.env.JARVIS_TEST_PS_LOG, JSON.stringify({ which: 'exec', arg: command }) + '\n'), { code: 0, stdout: 'fake output', stderr: '', timedOut: false })
     : (command, o) => psReal.exec(command, o)
   const powerTools = createPowerTools({ exec: powerExec, ps: runPs, protectedPaths: [userData] })
-  for (const t of [...tools, ...createSpotifyTools({ ps: runPs, shell }), ...(google && accountStore ? createGoogleTools({ google, store: accountStore }) : []), ...powerTools, ...createBriefingTools({
+  for (const t of [...tools, ...createSpotifyTools({ ps: runPs, shell }), ...(google && accountStore ? createGoogleTools({ google, store: accountStore }) : []), ...powerTools, ...(captureScreen ? createScreenTools({
+    capture: captureScreen,
+    vision: (q, img) => brain().vision(q, img),
+    enabled: () => !!settings().screenVision,
+    providers: () => brain().list().filter((e) => e.enabled).map((e) => e.providerName)
+  }) : []), ...createBriefingTools({
     google,
     store: accountStore,
     scheduler: sched,

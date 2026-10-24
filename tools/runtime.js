@@ -81,7 +81,7 @@ function createRuntime({ audit, confirm, powerMode = () => false, disabled = () 
           tier: tool.tier,
           title: tool.title || name.replace(/_/g, ' '),
           detail: tool.describe(v.value),
-          requireClick: tainted || tool.tier === 'T3'
+          requireClick: tainted || tool.tier === 'T3' || !!tool.requireClick
         })
       } catch {
         yes = false
@@ -131,6 +131,8 @@ function createRuntime({ audit, confirm, powerMode = () => false, disabled = () 
     call,
     undo,
     has: (n) => tools.has(n),
+    /** a short human name for a tool, for "first I will…" announcements */
+    label: (n) => (tools.get(n) && (tools.get(n).title || tools.get(n).name.replace(/_/g, ' '))) || n,
     isAvailable: (n) => tools.has(n) && available(tools.get(n)),
     get: (n) => tools.get(n),
     names: () => [...tools.keys()],

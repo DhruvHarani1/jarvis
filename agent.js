@@ -24,10 +24,10 @@ function resultMessage(r) {
  */
 function createAgent({ brain, runtime, maxSteps = MAX_STEPS }) {
   /**
-   * @param {{messages:any[], onDelta?:(t:string)=>void, tainted?:boolean}} o
+   * @param {{messages:any[], onDelta?:(t:string)=>void, tainted?:boolean, onPlan?:(labels:string[])=>void}} o
    * @returns {Promise<{ok:boolean, text?:string, via?:string, steps:{tool:string,args:any,ok:boolean,error?:string}[], tainted:boolean, error?:string, chain?:string[]}>}
    */
-  async function run({ messages, onDelta, tainted = false }) {
+  async function run({ messages, onDelta, tainted = false, onPlan }) {
     const msgs = [...messages]
     const steps = []
     const tools = runtime.specs()
@@ -63,6 +63,14 @@ function createAgent({ brain, runtime, maxSteps = MAX_STEPS }) {
         if (seen.has(key) || used.length >= MAX_CALLS_PER_STEP) continue
         seen.add(key)
         used.push({ ...c, id: c.id && !used.some((u) => u.id === c.id) ? c.id : `call_${step}_${used.length + 1}` })
+      }
+      // several actions in one go: say what is about to happen before it happens
+      if (used.length > 1 && onPlan) {
+        try {
+          onPlan(used.map((c) => runtime.label(c.name)))
+        } catch {
+          /* an announcement problem must not stop the work */
+        }
       }
       msgs.push({ role: 'assistant', content: text || null, tool_calls: used.map((c) => ({ id: c.id, type: 'function', function: { name: c.name, arguments: c.arguments } })) })
       for (const c of used) {

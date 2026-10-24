@@ -30,6 +30,9 @@ const MAX_CANDIDATES = 14
 // text chat models only: skip embeddings, rerankers, safety guards, vision/image/audio/bio models …
 const BAD_MODEL = /embed|rerank|guard|safety|reward|retriev|vision|(^|[-/])vl([-/]|$)|image|video|clip|ocr|asr|tts|speech|whisper|biolog|protein|molecul|diffusion|parse|moderat|audio|translat|riva|calibrat|genmol|fourcastnet|flux|sdxl|stable|code-?gen|nemoguard|content-safety/i
 const GOOD_HINT = /instruct|chat|flash|lightning|nemotron|llama|qwen|gemma|mistral|gpt-oss|deepseek|phi|glm|kimi|minimax|granite|-it$|versatile|instant|sonar|command|grok/i
+// models that can look at a picture (used only for "what is on my screen")
+const VISION_HINT = /llama-4|scout|maverick|vision|[-_]vl|gemini|gpt-4o|gpt-4.1|pixtral|llava|molmo/i
+const NOT_VISION = /embed|rerank|guard|safety|whisper|tts|image-gen|imagen|veo|audio|live|preview-tts/i
 const SMALL_HINT = /(^|[^0-9])(1|3|4|7|8|9|12)b(?![0-9])|lightning|flash|mini|small|instant|lite/i
 
 /** Presets: base URL, models we prefer (the first one the key can actually see is used), and where to get a free key. */
@@ -609,6 +612,58 @@ function createBrain(deps) {
   }
 
   /**
+   * Ask a vision-capable model about a picture. Same keys, same limits and failover as chat, but only models that can see.
+   * @param {string} prompt
+   * @param {string} dataUrl data:image/jpeg;base64,...
+   * @returns {Promise<{ok:boolean, text?:string, via?:string, chain:string[], error?:string}>}
+   */
+  async function vision(prompt, dataUrl) {
+    const chain = []
+    const est = 1500
+    let keys = store.entries.filter((e) => e.enabled !== false && !state(e.id).bad && state(e.id).until <= now())
+    keys = keys.filter((e) => {
+      const c = ledger.check(e.id, limitsOf(e), est)
+      if (!c.ok) chain.push(`${e.label}: used up for now`)
+      return c.ok
+    })
+    if (store.smartOrder) keys = [...keys].sort((a, b) => health.score(b.id) - health.score(a.id))
+    for (const e of keys.slice(0, MAX_ONLINE_TRIES)) {
+      const key = keyOf(e)
+      if (!key) continue
+      const base = e.baseUrl || PRESETS[e.provider].baseUrl
+      let models = []
+      if (e.model && VISION_HINT.test(e.model)) models = [e.model]
+      else {
+        const r = await request(`${base}/models`, { method: 'GET', headers: { Authorization: `Bearer ${key}` } }, 12_000)
+        if (r.ok) models = (r.json?.data || r.json?.models || []).map((m) => String(m.id || m.name || '').replace(/^models\//, '')).filter((i) => i && VISION_HINT.test(i) && !NOT_VISION.test(i))
+      }
+      models.sort((a, c) => Number(SMALL_HINT.test(c)) - Number(SMALL_HINT.test(a)))
+      if (!models.length) {
+        chain.push(`${e.label}: no model that can see`)
+        continue
+      }
+      for (const model of models.slice(0, 3)) {
+        const body = { model, max_tokens: 420, temperature: 0.3, messages: [{ role: 'user', content: [{ type: 'text', text: prompt }, { type: 'image_url', image_url: { url: dataUrl } }] }] }
+        const r = await request(`${base}/chat/completions`, { method: 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, 45_000)
+        if (r.ok) {
+          const text = extractText(r.json).trim()
+          if (!text) continue
+          ledger.record(e.id, est)
+          health.success(e.id, r.ttfbMs)
+          chain.push(`${e.label}: ok`)
+          return { ok: true, text, via: `${e.label} (${model})`, chain }
+        }
+        if (r.kind === 'model') continue
+        penalise(e, r)
+        health.failure(e.id)
+        chain.push(`${e.label}: ${r.message}`)
+        break
+      }
+    }
+    return { ok: false, chain, error: chain.length ? 'none of my keys has a model that can look at a picture' : 'no AI key to look at the picture with' }
+  }
+
+  /**
    * Speech to text through a Groq key (Whisper): same failover rules as chat.
    * @param {Uint8Array|Buffer} wav 16 kHz mono 16-bit WAV
    * @returns {Promise<{ok:boolean, text?:string, via?:string, chain:string[], error?:string}>}
@@ -679,7 +734,7 @@ function createBrain(deps) {
     return false
   }
 
-  return { list, getSettings, add, update, remove, move, setNaturalChat, setSmartOrder, chat, transcribe, canTranscribe, test, ready, lastChain: () => lastChain, _state: state }
+  return { list, getSettings, add, update, remove, move, setNaturalChat, setSmartOrder, chat, vision, transcribe, canTranscribe, test, ready, lastChain: () => lastChain, _state: state }
 }
 
 module.exports = { createBrain, PRESETS, classify, extractText, cleanBaseUrl, cleanKey, MAX_ONLINE_TRIES, OLLAMA_BASE }

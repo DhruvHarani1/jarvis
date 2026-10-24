@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('jarvis', {
   stopSpeaking: () => ipcRenderer.send('speak:stop'),
   onSpeechStart: on('speech:start'),
   onSpeechIdle: on('speech:idle'),
+  onHudStats: on('hud:stats'),
   onAssistantLine: on('assistant:line'),
   onTtsPlay: on('tts:play'),
   onTtsStop: on('tts:stop'),

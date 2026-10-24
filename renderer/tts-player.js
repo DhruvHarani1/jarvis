@@ -30,8 +30,10 @@
     const at = Math.max(c.currentTime + 0.02, nextStart)
     nextStart = at + buf.duration
     live.add(src)
+    document.body.dataset.speaking = '1'
     src.onended = () => {
       live.delete(src)
+      if (!live.size) document.body.dataset.speaking = '0'
       window.jarvis.ttsEvent({ id: m.id, state: 'ended' })
     }
     setTimeout(() => window.jarvis.ttsEvent({ id: m.id, state: 'started' }), Math.max(0, (at - c.currentTime) * 1000))
@@ -48,6 +50,7 @@
       }
     }
     live.clear()
+    document.body.dataset.speaking = '0'
     nextStart = 0
   })
 })()

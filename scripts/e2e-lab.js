@@ -47,10 +47,13 @@ async function connect(port) {
     for (let i = 0; i < 60 && !/wrong/.test(res); i++) { await sleep(700); res = await w('document.querySelector("#l-phrases .s").textContent') }
     ok('the speech test shows what the engines heard, with a word-error score', /wrong/.test(res) && /on this PC/.test(res), res.slice(0, 200))
 
-    await w('document.getElementById("l-wakeyes").click()')
+    // the fake microphone loops one recording, so a 3 s clip can start mid-phrase: allow a few tries
     let wr = ''
-    for (let i = 0; i < 40 && !/1 "Hey Jarvis" clip/.test(wr); i++) { await sleep(700); wr = await w(text('l-wakeres')) }
-    ok('the wake test scores every sensitivity on the recording', /Balanced: woke on 1 of 1/.test(wr), wr.slice(0, 250))
+    for (let t = 1; t <= 3 && !/Balanced: woke on [1-9]/.test(wr); t++) {
+      await w('document.getElementById("l-wakeyes").click()')
+      for (let i = 0; i < 40 && !new RegExp(t + ' "Hey Jarvis" clip').test(wr); i++) { await sleep(700); wr = await w(text('l-wakeres')) }
+    }
+    ok('the wake test scores every sensitivity on the recording', /Balanced: woke on [1-9]/.test(wr), wr.slice(0, 250))
     await w('document.getElementById("l-waketalk").click()')
     for (let i = 0; i < 40 && !/1 ordinary/.test(wr); i++) { await sleep(900); wr = await w(text('l-wakeres')) }
     ok('talk clips are counted too', /1 ordinary-talk/.test(wr), wr.slice(0, 120))

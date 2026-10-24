@@ -189,6 +189,7 @@ function createWindow() {
     e.preventDefault()
     win.hide()
   })
+  if (process.env.SPIDEY_TEST && process.env.JARVIS_TEST_DL_DEMO) win.webContents.once('did-finish-load', () => setTimeout(() => win?.webContents.send('download:progress', { title: 'Parakeet speech model', index: 1, count: 2, got: 200 * 1048576, total: 480 * 1048576, phase: 'download' }), 800))
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'), process.env.SPIDEY_TEST ? { query: { test: '1' } } : undefined)
 }
 
@@ -226,7 +227,7 @@ function updateMenuItem() {
   if (s.state === 'ready') return { label: `Restart to update to v${s.version}`, click: () => updater.install() }
   if (s.state === 'downloading') return { label: `Downloading update… ${Math.round(s.percent || 0)}%`, enabled: false }
   if (s.state === 'checking') return { label: 'Checking for updates…', enabled: false }
-  return { label: `Check for updates (v${app.getVersion()})`, click: () => void updater.check() }
+  return { label: `Updates: version ${app.getVersion()}…`, click: () => openSettings('general') }
 }
 
 /** ask first (what, where from, how big), then download, verify and install the voice models */
@@ -247,16 +248,29 @@ async function offerModels(bundles) {
     detail: detail + '\n\nEach file is checked against a fixed checksum before it is used. Nothing else is downloaded or sent.'
   })
   if (r.response !== 0) return { ok: false, message: 'Not now.' }
+  const tell = (p) => win?.webContents.send('download:progress', p)
+  let doneBytes = 0
+  let lastSent = 0
   try {
-    for (const it of items) {
-      await audioModels.install(it.id, ({ got, total: t }) => win?.setProgressBar(t ? got / t : -1))
+    for (const [idx, it] of items.entries()) {
+      tell({ title: it.title, index: idx + 1, count: items.length, got: doneBytes, total, phase: 'download' })
+      await audioModels.install(it.id, ({ got, total: t }) => {
+        win?.setProgressBar(total ? (doneBytes + got) / total : -1)
+        const nowMs = Date.now()
+        if (nowMs - lastSent < 200 && got < t) return
+        lastSent = nowMs
+        tell({ title: it.title, index: idx + 1, count: items.length, got: doneBytes + got, total, phase: got >= t ? 'unpack' : 'download' })
+      })
+      doneBytes += it.bytes
     }
+    tell({ done: true })
     win?.setProgressBar(-1)
     void dialog.showMessageBox(win, { type: 'info', message: 'Voice models installed.', detail: 'Jarvis now understands you and speaks on this PC.' })
     buildTray()
     return { ok: true, message: 'Installed.' }
   } catch (e) {
     win?.setProgressBar(-1)
+    tell({ done: true, error: String((e && e.message) || e).slice(0, 160) })
     void dialog.showMessageBox(win, { type: 'error', message: 'Could not install the voice models.', detail: String((e && e.message) || e) })
     buildTray()
     return { ok: false, message: String((e && e.message) || e) }

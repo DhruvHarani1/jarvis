@@ -65,6 +65,57 @@
   })
   $('s-menu').addEventListener('click', () => window.jarvis.showMenu())
 
+  // ---- download progress (voice models, anything else that downloads): a bar under the title bar on every screen
+  const dl = $('dl')
+  let dlHide = 0
+  const mb = (n) => (n / 1048576).toFixed(n > 1.05e9 ? 0 : 1) + ' MB'
+  window.jarvis.onDownload((p) => {
+    clearTimeout(dlHide)
+    if (p.done) {
+      dl.hidden = !p.error
+      document.body.dataset.dl = p.error ? '1' : '0'
+      if (p.error) {
+        $('dl-text').textContent = 'Download failed: ' + p.error
+        $('dl-fill').style.width = '0%'
+        dlHide = setTimeout(() => { dl.hidden = true; document.body.dataset.dl = '0' }, 8000)
+      }
+      return
+    }
+    const pct = p.total ? Math.min(100, Math.round((p.got / p.total) * 100)) : 0
+    dl.hidden = false
+    document.body.dataset.dl = '1'
+    dl.setAttribute('aria-valuenow', String(pct))
+    $('dl-fill').style.width = pct + '%'
+    $('dl-text').textContent = (p.phase === 'unpack' ? 'Checking and unpacking ' : 'Downloading ') + p.title + (p.count > 1 ? ' (' + p.index + ' of ' + p.count + ')' : '') + ' · ' + pct + '% · ' + mb(p.got) + ' of ' + mb(p.total)
+  })
+
+  // ---- updates
+  let nowVersion = ''
+  function drawUpdate(u) {
+    if (!u) return
+    nowVersion = u.version_now || nowVersion
+    $('u-version').textContent = nowVersion ? 'Jarvis ' + nowVersion : 'Jarvis'
+    const say = {
+      idle: 'Not checked yet.',
+      checking: 'Checking…',
+      none: 'You have the latest version.',
+      downloading: 'Downloading version ' + (u.version || '') + ' (' + (u.percent || 0) + '%)…',
+      ready: 'Version ' + (u.version || '') + ' is downloaded and ready.',
+      error: 'The check failed: ' + (u.message || 'unknown problem') + ' Try again in a moment.',
+      disabled: u.reason || 'Updates only work in the installed app.'
+    }
+    $('u-status').textContent = say[u.state] || ''
+    $('u-check').disabled = ['checking', 'downloading', 'disabled'].includes(u.state)
+    $('u-install').hidden = u.state !== 'ready'
+  }
+  $('u-check').addEventListener('click', async () => {
+    drawUpdate({ state: 'checking' })
+    drawUpdate(await window.jarvis.updateCheck())
+  })
+  $('u-install').addEventListener('click', () => window.jarvis.updateInstall())
+  window.jarvis.onUpdate((u) => drawUpdate({ ...u, version_now: nowVersion }))
+  window.jarvis.updateState().then(drawUpdate)
+
   // ---- Voice
   async function devices() {
     const sel = $('v-device')

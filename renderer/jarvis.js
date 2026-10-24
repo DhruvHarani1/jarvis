@@ -110,7 +110,9 @@
     }
     if (/\bcheck for updates?\b/.test(t)) {
       const r = await window.jarvis.updateCheck().catch(() => null)
-      return r && r.state === 'ready' ? 'An update is downloaded. Use the tray menu to restart and install it.' : 'I checked: you are up to date.'
+      if (r && r.state === 'ready') return 'An update is downloaded. Open Settings, General, and press Restart and update now.'
+      if (r && r.state === 'error') return 'I could not check: ' + (r.message || 'no answer') + ' You can try again from Settings, General.'
+      return r && r.state === 'none' ? 'You are up to date.' : 'I started checking. The result will show in Settings, General.'
     }
     return null
   }

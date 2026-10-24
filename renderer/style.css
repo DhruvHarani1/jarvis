@@ -110,3 +110,9 @@ body[data-wake='1'] .stage::after { content: 'WAKE WORD ON'; position: absolute;
 .best { color: var(--ok); font-weight: 600; }
 
 @media (prefers-reduced-motion: reduce) { * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }
+
+/* ---- download progress bar under the title bar */
+.dl { position: fixed; left: 0; right: 0; top: 47px; z-index: 30; padding: 4px 12px 6px; background: rgba(2, 8, 18, 0.97); border-bottom: 1px solid var(--line); font: 11px var(--mono); color: var(--accent2); }
+.dlbar { margin-top: 4px; height: 5px; background: rgba(56, 200, 255, 0.16); border-radius: 3px; overflow: hidden; }
+.dlbar i { display: block; height: 100%; width: 0; background: var(--accent); box-shadow: 0 0 8px var(--accent); transition: width 0.2s; }
+body[data-dl='1'] .settings { top: 78px; }

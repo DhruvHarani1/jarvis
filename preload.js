@@ -33,6 +33,7 @@ contextBridge.exposeInMainWorld('jarvis', {
   brainReset: () => ipcRenderer.send('brain:reset'),
   onBrainDelta: on('brain:delta'),
   onSettingsPage: on('settings:page'),
+  onDownload: on('download:progress'),
   transcribe: (audio) => ipcRenderer.invoke('stt:transcribe', audio),
   voiceInfo: () => ipcRenderer.invoke('voice:info'),
   voiceListening: (isOn) => ipcRenderer.send('voice:listening', !!isOn),

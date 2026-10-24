@@ -15,6 +15,7 @@
       <button class="ib" id="setbtn" title="Settings" aria-label="Settings">⚙</button>
       <button class="ib" id="hidebtn" title="Hide to tray" aria-label="Hide">–</button>
     </header>
+    <div class="dl" id="dl" hidden role="progressbar" aria-label="Download progress" aria-valuemin="0" aria-valuemax="100"><span id="dl-text">Downloading…</span><div class="dlbar"><i id="dl-fill"></i></div></div>
     <main id="home">
       <div class="stage">
         <div class="readouts" aria-hidden="true">
@@ -68,6 +69,13 @@
             <input id="s-callMe" type="text" maxlength="40" placeholder="sir" autocomplete="off" />
           </label>
           <p><button id="s-save" class="primary">Save name</button> <span id="s-savemsg" role="status"></span></p>
+        </div>
+        <div class="card">
+          <h2>About and updates</h2>
+          <p><b id="u-version">Jarvis</b></p>
+          <p id="u-status" class="muted" role="status">Not checked yet.</p>
+          <p><button id="u-check" class="primary">Check for updates</button> <button id="u-install" hidden>Restart and update now</button></p>
+          <p class="muted">Jarvis also checks by itself a short while after he starts, and every few hours. New versions come from the project's GitHub releases.</p>
         </div>
         <div class="card">
           <p class="muted">What Jarvis may do on the PC, Power mode and screen understanding are on the Tools page; what he remembers is on Memory.</p>

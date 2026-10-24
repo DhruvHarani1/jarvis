@@ -17,6 +17,8 @@ const { createGoogleTools } = require('./tools/google')
 const { createMemoryTools } = require('./tools/memory')
 const { createChatTools } = require('./tools/chatapps')
 const { createPowerTools } = require('./tools/power')
+const { createBriefingTools } = require('./tools/briefing')
+const { PS: WIN_PS } = require('./tools/windows')
 const { createAgent } = require('./agent')
 
 /**
@@ -59,7 +61,17 @@ function create({ electron, userData, brain, settings, confirm, onReminder, ps, 
     ? async (command) => (fs.appendFileSync(process.env.JARVIS_TEST_PS_LOG, JSON.stringify({ which: 'exec', arg: command }) + '\n'), { code: 0, stdout: 'fake output', stderr: '', timedOut: false })
     : (command, o) => psReal.exec(command, o)
   const powerTools = createPowerTools({ exec: powerExec, ps: runPs, protectedPaths: [userData] })
-  for (const t of [...tools, ...createSpotifyTools({ ps: runPs, shell }), ...(google && accountStore ? createGoogleTools({ google, store: accountStore }) : []), ...powerTools, ...(memory ? createMemoryTools({ memory }) : []), ...(memory ? createChatTools({ memory, ps: runPs, shell, recentNotifications: recentNotifications || (() => []), google, store: accountStore }) : [])]) runtime.register(t)
+  for (const t of [...tools, ...createSpotifyTools({ ps: runPs, shell }), ...(google && accountStore ? createGoogleTools({ google, store: accountStore }) : []), ...powerTools, ...createBriefingTools({
+    google,
+    store: accountStore,
+    scheduler: sched,
+    notifications: recentNotifications || (() => []),
+    battery: async () => {
+      const s = JSON.parse(await runPs(WIN_PS.cpuBattery))
+      return s.battery === null || s.battery === undefined ? null : { percent: s.battery, charging: !!s.charging }
+    },
+    name: () => String(settings().callMe || '')
+  }), ...(memory ? createMemoryTools({ memory }) : []), ...(memory ? createChatTools({ memory, ps: runPs, shell, recentNotifications: recentNotifications || (() => []), google, store: accountStore }) : [])]) runtime.register(t)
   const agent = createAgent({ brain: { chat: (m, d, o) => brain().chat(m, d, o) }, runtime })
   sched.start()
   return { runtime, agent, audit: auditLog, scheduler: sched, sandbox, toolList: () => runtime.tiers() }

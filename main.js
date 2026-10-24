@@ -1,5 +1,5 @@
 'use strict'
-const { app, BrowserWindow, clipboard, dialog, utilityProcess, safeStorage, session, shell, globalShortcut, Menu, Notification, Tray, ipcMain, nativeImage, screen } = require('electron')
+const { app, BrowserWindow, clipboard, dialog, powerMonitor, utilityProcess, safeStorage, session, shell, globalShortcut, Menu, Notification, Tray, ipcMain, nativeImage, screen } = require('electron')
 const fs = require('node:fs')
 const path = require('node:path')
 const autostart = require('./autostart')
@@ -33,6 +33,8 @@ const DEFAULTS = {
   jarvisSpeaks: true, // replies are spoken aloud (voice turns are always spoken)
   voiceConverse: false, // after he answers a spoken question, listen again for a follow-up
   wakeWord: false, // "Hey Jarvis": always listening for the wake phrase, fully offline
+  morningBriefing: true, // greet with the day's briefing the first time Jarvis is up each morning (5 to 11 am)
+  lastBriefing: '', // the day it was last given
   welcomed: false, // the first-run setup window has been shown
   actions: true, // Jarvis may act on the PC through his tools (every action is checked, confirmed when risky, and logged)
   disabledTools: [], // tools the user switched off
@@ -308,6 +310,8 @@ function menuTemplate() {
       }
     },
     { label: 'Undo last action', click: () => void tools?.runtime.undo().then((r) => speech.speak(r.ok ? r.spoken : r.error, { queue: true })) },
+    { label: 'Brief me now', click: () => void giveBriefing() },
+    check('Morning briefing: once each morning when I start (5 to 11 am)', 'morningBriefing'),
     { label: 'Setup guide…', click: () => openWelcome() },
     { label: 'Accounts: mail and calendar…', click: () => openAccounts() },
     { label: 'Memory: export what I remember…', click: () => void exportMemory() },
@@ -577,12 +581,30 @@ ipcMain.on('welcome:finish', (e) => {
   welcomeWin?.close()
 })
 
+/** the morning briefing, once a day, when someone is at the PC; also what "Brief me now" does */
+async function giveBriefing() {
+  if (!tools) return
+  const r = await tools.runtime.call('morning_briefing', {}, { source: 'auto' })
+  if (!r.ok) return
+  win?.webContents.send('assistant:line', r.spoken)
+  if (settings.jarvisSpeaks) void speech.speak(r.spoken, { queue: true })
+}
+function maybeAutoBriefing() {
+  if (!tools || process.env.SPIDEY_TEST || settings.morningBriefing === false) return
+  const d = new Date()
+  if (settings.lastBriefing === d.toDateString() || d.getHours() < 5 || d.getHours() >= 11) return
+  if (powerMonitor.getSystemIdleTime() > 300) return // nobody is at the PC: try again later
+  update({ lastBriefing: d.toDateString() })
+  void giveBriefing()
+}
+
 function initTools() {
   tools = appTools.create({
     google,
     accountStore,
     memory,
-    recentNotifications: () => (settings.inbox ? recentNotifs : []),
+    // apps the user muted for reading aloud are left out of the briefing and of read_notifications too
+    recentNotifications: () => (settings.inbox ? recentNotifs.filter((n) => !(settings.readMuted || []).some((m) => String(n.app).toLowerCase().includes(m))) : []),
     electron: { app, shell, clipboard },
     userData: app.getPath('userData'),
     brain: () => brain,
@@ -970,6 +992,8 @@ if (!app.requestSingleInstanceLock()) {
     audio.onCrash((code) => console.error('audio worker crashed, exit', code))
     initBrain()
     initMemory()
+    setTimeout(maybeAutoBriefing, 12_000)
+    setInterval(maybeAutoBriefing, 10 * 60_000)
     if (process.env.JARVIS_TEST_WELCOME || (!settings.welcomed && !process.env.SPIDEY_TEST && !process.argv.includes('--autostart'))) setTimeout(() => openWelcome(), 1500)
     initAccounts()
     initTools()

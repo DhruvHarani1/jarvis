@@ -29,6 +29,7 @@ To build an installer: `npm run dist` (writes `release\Jarvis-Setup-<version>.ex
 | "Send a WhatsApp to Mum saying I'm late", "message Rahul on Teams saying…" | opens the chat with your text typed in, asks you first, then sends |
 | "Join my next meeting", "what did Mum say" | meeting link from your calendar; notifications |
 | "Remember my sister is called Asha", "what do you remember", "forget that" | local memory |
+| "Good morning", "what does my day look like" | a spoken briefing: calendar, unread mail, reminders, notifications (made on your PC, no AI provider involved; also given once each morning) |
 | "Undo that" | undoes the last action where possible |
 | "Run powershell Get-Date" (Power mode only) | runs a command, after you read it and click Allow |
 | anything else | goes to the AI model, which can use the same tools |

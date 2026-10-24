@@ -24,6 +24,8 @@
   function setUnread(_kind, n) {
     document.body.dataset.unread = n ? '1' : '0'
   }
+  window.jarvis.onAssistantLine((text) => addLine('jarvis', String(text || '')))
+
   window.Core = {
     say,
     setUnread,

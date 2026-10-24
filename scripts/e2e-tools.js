@@ -121,6 +121,12 @@ async function connect(match) {
     ok('"undo that" restored the old volume', psCalls().filter((c) => c.which === 'audioSet').at(-1).arg.level === 40)
     ok('none of that needed the language model', providerSaw.length === before)
 
+    // ---- morning briefing: composed locally, no provider call
+    const beforeBrief = providerSaw.length
+    await w.ev('window.Assistant.handle("good morning")')
+    ok('"good morning" gives the briefing (greeting, date, time)', /^Good (morning|afternoon|evening)\. It is \w+day, \w+ \d+, \d+:\d\d (AM|PM)\./.test(await lastLine(w)), await lastLine(w))
+    ok('the briefing needed no language model', providerSaw.length === beforeBrief)
+
     // ---- Spotify (free account tools: links and window title)
     await w.ev('window.Assistant.handle("what is playing")')
     ok('"what is playing" reads the Spotify window title', (await lastLine(w)) === 'Never Gonna Give You Up by Rick Astley.')

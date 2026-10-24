@@ -95,6 +95,9 @@ function parse(raw, o = {}) {
   if (/^(system status|how(?:'s| is) my (?:pc|computer|laptop|system)(?: doing)?|pc status|computer status|how(?:'s| is) the pc|battery|battery level|how much battery(?: do i have| is left)?|cpu usage)$/.test(t)) return { kind: 'tool', name: 'system_status', args: {} }
   if (/^(what(?:'s| are) my reminders|list (?:my )?reminders|list (?:my )?timers|show (?:my )?reminders)$/.test(t)) return { kind: 'tool', name: 'list_reminders', args: {} }
 
+  // the morning briefing
+  if (/^(?:good morning|morning|morning briefing|brief me|give me (?:my |the )?(?:morning )?(?:briefing|brief|rundown|summary)|(?:what(?:'s| is) (?:my|the) day(?: looking)? like|what does my day look like|how(?:'s| is) my day(?: looking)?)(?: today)?|catch me up|my briefing)$/.test(t)) return { kind: 'tool', name: 'morning_briefing', args: {} }
+
   // memory (the original wording is kept, so names keep their capitals)
   const said = String(raw || '').trim().replace(/^(?:hey |ok |okay )?jarvis[, ]+/i, '').replace(/^please /i, '').replace(/[?!]+$/, '')
   if ((m = /^(?:remember|make a note|take a note|note down|note)(?: that| this| down that)?:? (.{3,300})$/i.exec(said)) && !/^(to |how |what |why |when |where )/i.test(m[1])) return { kind: 'tool', name: 'remember', args: { text: m[1].replace(/[.]+$/, '') } }

@@ -396,7 +396,9 @@ Order by value for Dhruv: Spotify (URI + media keys), Calendar and Mail (OAuth o
 
 **Mail and calendar guides written, no code yet:** `docs/setup/README.md`, `google-mail-calendar.md`, `microsoft-mail-calendar-teams.md`. Key facts checked against Google's and Microsoft's own pages: Google Desktop-app client with a loopback redirect and PKCE; an External app left in Testing gets a refresh token that expires in 7 days, so the guide says to publish it (unverified-app screen is expected); Microsoft app registration as "any Entra ID tenant + personal accounts", public client, `http://localhost`. Not verified from here: whether a personal Microsoft account can register an app without an Azure sign-up (the guide says what to do if not), and which Teams permissions your employer lets you approve.
 
-**Next in M2b:** the Accounts window with Google and Microsoft sign-in (PKCE, DPAPI token store), then Calendar and Mail read tools, then the write tools with confirmation; WhatsApp and Teams (deep links plus UI automation); optional MCP client; Power mode.
+**Google verified for real (2026-10-24):** the user connected a real Google account through the Accounts window and mail and calendar work. Earlier tests used a stand-in for Google.
+
+**Next in M2b:** (done: Accounts window and Google; remaining) the Accounts window with Google and Microsoft sign-in (PKCE, DPAPI token store), then Calendar and Mail read tools, then the write tools with confirmation; WhatsApp and Teams (deep links plus UI automation); optional MCP client; Power mode.
 
 ### M3: Memory (1-2 sessions)
 

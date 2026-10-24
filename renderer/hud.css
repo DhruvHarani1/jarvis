@@ -94,9 +94,9 @@ input[type='text']:focus, input[type='password']:focus, select:focus { border-co
 select option { background: var(--panel-solid); color: var(--text); }
 input[type='checkbox'] { accent-color: var(--accent); transform: scale(1.15); margin-right: 8px; }
 code { padding: 1px 6px; background: rgba(2, 10, 20, 0.9); border: 1px solid var(--line); border-radius: 3px; color: var(--accent2); font: 12.5px var(--mono); }
-#addmsg, #micmsg, #modelmsg { margin-left: 10px; font-size: 13px; }
-#addmsg.err, #micmsg.err, #modelmsg.err { color: #ff9aae; }
-#addmsg.ok, #micmsg.ok, #modelmsg.ok { color: var(--ok); }
+#addmsg, #aaddmsg, #micmsg, #modelmsg, #v-dlmsg, #s-savemsg { margin-left: 10px; font-size: 13px; }
+#addmsg.err, #aaddmsg.err, #micmsg.err, #modelmsg.err { color: #ff9aae; }
+#addmsg.ok, #aaddmsg.ok, #micmsg.ok, #modelmsg.ok { color: var(--ok); }
 #meter { font: 12px var(--mono); color: var(--accent); min-height: 18px; }
 
 ::-webkit-scrollbar { width: 8px; height: 8px; }

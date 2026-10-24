@@ -60,3 +60,6 @@ Today there are four windows (main, AI keys, Accounts, Setup). They become **one
 
 ## V4 result (wake word, synthetic sweep)
 `scripts/spikes/wake-sweep.js` (60 wake clips: speeds, pitches, quiet, noisy; 24 talk clips with look-alikes). Old setting (boost 2, threshold 0.25 global): ~70% recall. Chosen: boost 3.5, threshold 0.05: 88% recall (quiet 100%, noisy 10 dB 89%, noisy 4 dB 67%), one false wake on "Hey Jervis". Extra variants ("hi jarvis", bare "jarvis") raised recall to ~92% but tripled false wakes: rejected. Real voices still need the Voice Lab (V6). Two-stage confirmation and in-app sensitivity setting deferred to V6.
+
+## U1-U4 result (single window)
+One window now: canvas orb (idle, listening, thinking, speaking, awaiting your OK, error) with CPU/RAM readouts, caption, a conversation drawer and the input bar. Settings slide over it (gear button, Esc closes) with pages General, Voice, AI brain, Accounts, Setup. The three extra windows and their preloads are gone; one preload exposes the same masked APIs (no key, token or model path ever comes back). Window is 520x760. All e2e suites were pointed at the single window and pass; 35 unit suites pass. Still to do: U5 pages for Tools & permissions (Power mode, screen vision, per-tool switches), Memory & contacts, Activity log; V5 voice health; V6 Voice Lab; U6 polish.

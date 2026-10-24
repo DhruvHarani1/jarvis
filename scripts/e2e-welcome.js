@@ -33,11 +33,12 @@ async function connect(match, port) {
   let fails = 0
   const ok = (name, cond, extra = '') => { if (!cond) fails++; console.log(`${cond ? 'PASS' : 'FAIL'}  ${name} ${extra}`) }
   try {
-    const w = await connect('welcome.html', 9342)
+    const w = await connect('index.html', 9342)
     for (let i = 0; i < 20 && (await w('document.readyState')) !== 'complete'; i++) await sleep(300)
-    await sleep(800)
-    ok('the setup window opens with its four steps', (await w('document.querySelectorAll("section.card").length')) === 4)
-    ok('it knows the voice models are installed', /ready/.test(await w('document.getElementById("modelstate").textContent')) && (await w('document.getElementById("models").hidden')) === true, await w('document.getElementById("modelstate").textContent'))
+    for (let i = 0; i < 30 && (await w('document.getElementById("settings").hidden')) !== false; i++) await sleep(300)
+    await sleep(1200)
+    ok('the setup window opens with its four steps', (await w('document.querySelectorAll("#page-setup section.card").length')) === 4)
+    ok('it knows the voice models are installed', /ready/.test(await w('document.getElementById("modelstate").textContent')) && (await w('document.getElementById("models").hidden')) === true, JSON.stringify([await w('[...document.querySelectorAll(".page")].map(p=>p.id+p.hidden).join()'), await w('document.getElementById("modelstate").textContent'), await w('document.getElementById("models").hidden'), await w('document.getElementById("page-setup").hidden')]))
     ok('the wake word switch is available because its model is installed', (await w('document.getElementById("wake").disabled')) === false)
     await w('document.getElementById("mic").click()')
     let msg = ''
@@ -45,8 +46,7 @@ async function connect(match, port) {
     ok('the microphone check finishes with an answer (fake microphone)', /hear you|nothing/.test(msg), JSON.stringify(msg))
     await w('document.getElementById("finish").click()')
     await sleep(1200)
-    const pages = await (await fetch('http://localhost:9342/json')).json()
-    ok('Done closes the window', !pages.some((p) => p.url.includes('welcome.html')))
+    ok('Done closes the settings', (await w('document.getElementById("settings").hidden')) === true)
   } catch (e) { fails++; console.log('FAIL  exception', e.message) }
   app.kill()
   console.log(fails ? `welcome e2e: ${fails} FAILED` : 'welcome e2e: ALL PASS')

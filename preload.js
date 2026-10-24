@@ -31,9 +31,8 @@ contextBridge.exposeInMainWorld('jarvis', {
   brainReady: () => ipcRenderer.invoke('brain:ready'),
   brainChat: (text, ctx, opts) => ipcRenderer.invoke('brain:chat', text, ctx, opts),
   brainReset: () => ipcRenderer.send('brain:reset'),
-  openBrain: () => ipcRenderer.send('brain:open'),
-  openAccounts: () => ipcRenderer.send('accounts:open'),
   onBrainDelta: on('brain:delta'),
+  onSettingsPage: on('settings:page'),
   transcribe: (audio) => ipcRenderer.invoke('stt:transcribe', audio),
   voiceInfo: () => ipcRenderer.invoke('voice:info'),
   voiceListening: (isOn) => ipcRenderer.send('voice:listening', !!isOn),
@@ -49,4 +48,31 @@ contextBridge.exposeInMainWorld('jarvis', {
   onUpdate: on('update:state'),
   showMenu: () => ipcRenderer.send('menu:show'),
   hide: () => ipcRenderer.send('window:hide')
+})
+
+// The window that holds the settings pages is the only window, so the three page APIs live here. None of them can read a secret back:
+// main returns masked key hints, who is connected and what they allowed, and what is installed. Never a key, token or model path.
+contextBridge.exposeInMainWorld('brainApi', {
+  state: () => ipcRenderer.invoke('brainwin:state'),
+  add: (entry) => ipcRenderer.invoke('brainwin:add', entry),
+  update: (id, patch) => ipcRenderer.invoke('brainwin:update', id, patch),
+  remove: (id) => ipcRenderer.invoke('brainwin:remove', id),
+  move: (id, dir) => ipcRenderer.invoke('brainwin:move', id, dir),
+  test: (id) => ipcRenderer.invoke('brainwin:test', id),
+  natural: (on) => ipcRenderer.invoke('brainwin:natural', on),
+  smart: (on) => ipcRenderer.invoke('brainwin:smart', on),
+  openLink: (url) => ipcRenderer.send('brainwin:link', url)
+})
+contextBridge.exposeInMainWorld('acctApi', {
+  state: () => ipcRenderer.invoke('acct:state'),
+  addGoogle: (form) => ipcRenderer.invoke('acct:add-google', form),
+  reconnect: (id) => ipcRenderer.invoke('acct:reconnect', id),
+  remove: (id) => ipcRenderer.invoke('acct:remove', id),
+  openGuide: (name) => ipcRenderer.send('acct:guide', name)
+})
+contextBridge.exposeInMainWorld('welcomeApi', {
+  state: () => ipcRenderer.invoke('welcome:state'),
+  installModels: (bundles) => ipcRenderer.invoke('welcome:models', bundles),
+  setWake: (on) => ipcRenderer.invoke('welcome:wake', !!on),
+  finish: () => ipcRenderer.send('welcome:finish')
 })

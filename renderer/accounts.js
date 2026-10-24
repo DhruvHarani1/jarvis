@@ -21,15 +21,15 @@
     ['calendar.events', 'calendar']
   ]
   const setMsg = (text, bad) => {
-    $('addmsg').textContent = text || ''
-    $('addmsg').className = bad ? 'err' : 'ok'
+    $('aaddmsg').textContent = text || ''
+    $('aaddmsg').className = bad ? 'err' : 'ok'
   }
 
   async function refresh() {
     const s = await window.acctApi.state()
-    $('warn').hidden = s.canEncrypt
-    if (!s.canEncrypt) $('warn').textContent = 'Windows encryption is not available for this user, so Jarvis will not store a sign-in.'
-    $('count').textContent = s.accounts.length ? `(${s.accounts.length})` : ''
+    $('awarn').hidden = s.canEncrypt
+    if (!s.canEncrypt) $('awarn').textContent = 'Windows encryption is not available for this user, so Jarvis will not store a sign-in.'
+    $('acount').textContent = s.accounts.length ? `(${s.accounts.length})` : ''
     $('none').hidden = s.accounts.length > 0
     $('list').replaceChildren(
       ...s.accounts.map((a) =>
@@ -74,5 +74,5 @@
   )
   $('guide').addEventListener('click', () => window.acctApi.openGuide('google'))
   $('msguide').addEventListener('click', () => window.acctApi.openGuide('microsoft'))
-  refresh()
+  document.addEventListener('settings-page', (e) => e.detail === 'accounts' && refresh())
 })()

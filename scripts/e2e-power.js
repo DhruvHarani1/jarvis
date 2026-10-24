@@ -66,8 +66,7 @@ async function session(powerOn, port, checks) {
   try {
     const w = await connect('index.html', port)
     for (let i = 0; i < 40 && !(await w('!!window.Assistant && !!window.Confirm')); i++) await sleep(500)
-    await w('window.jarvis.openBrain()')
-    const b = await connect('brain.html', port)
+    const b = w
     await b(`window.brainApi.add({provider:'custom',key:'KEY_E2E_1234',label:'fake',baseUrl:'http://127.0.0.1:8799/v1',model:'fake-model'})`)
     const execs = () => (fs.existsSync(log) ? fs.readFileSync(log, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((c) => c.which === 'exec') : [])
     await checks({ w, execs })

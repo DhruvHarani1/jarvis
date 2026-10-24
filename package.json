@@ -31,7 +31,6 @@
     "files": [
       "main.js",
       "preload.js",
-      "preload-brain.js",
       "brain.js",
       "brain-prompt.js",
       "karen-llm.js",
@@ -45,8 +44,6 @@
       "accounts/**/*",
       "memory/**/*",
       "router/**/*",
-      "preload-accounts.js",
-      "preload-welcome.js",
       "audio/**/*",
       "stt.js",
       "wake.js",

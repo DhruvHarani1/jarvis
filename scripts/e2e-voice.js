@@ -89,8 +89,7 @@ async function connect(match) {
   try {
     const w = await connect('index.html')
     for (let i = 0; i < 40 && !(await w.ev('!!window.Assistant && !!window.Voice && !!window.__voice')); i++) await sleep(500)
-    await w.ev('window.jarvis.openBrain()')
-    const b = await connect('brain.html')
+    const b = w
     const add = await b.ev(`window.brainApi.add({provider:'custom',key:'KEY_E2E_1234',label:'fake',baseUrl:'http://127.0.0.1:8799/v1',model:'fake-model'})`)
     ok('fake provider added', add && add.ok === true)
 

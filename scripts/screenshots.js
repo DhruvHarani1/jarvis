@@ -1,5 +1,5 @@
 'use strict'
-// Takes screenshots of every Jarvis window (main, AI keys, Accounts, Setup) into scratch/shots/ so the look can be checked by eye.
+// Takes screenshots of the Jarvis window (orb states, conversation drawer, every settings page) into scratch/shots/ so the look can be checked by eye.
 //   node scripts/screenshots.js
 const fs = require('node:fs')
 const path = require('node:path')
@@ -42,7 +42,7 @@ const shot = async (p, name) => {
   try {
     const main = await page('index.html', 9345)
     for (let i = 0; i < 30 && !(await main.ev('!!window.Assistant')); i++) await sleep(400)
-    await main.ev('document.getElementById("log").replaceChildren(); window.Assistant && 0')
+    await main.ev('document.getElementById("log").replaceChildren(); document.dispatchEvent(new CustomEvent("settings-open", { detail: "" }))')
     await main.ev(`(() => { const add = (c, t) => { const li = document.createElement('li'); li.className = c; li.textContent = t; document.getElementById('log').append(li) }; add('me', 'what is on my calendar today'); add('jarvis', 'You have 2 events today: Standup at 10:00 AM, Dentist at 4:00 PM.'); add('me', 'send a whatsapp to mum saying I will be late'); add('jarvis', 'Sent to Mum.'); document.getElementById('caption').textContent = 'LISTENING…' })()`)
     await sleep(500)
     await shot(main, 'main')
@@ -50,17 +50,17 @@ const shot = async (p, name) => {
     await main.ev(`window.dispatchEvent(new Event('x')); (function(){ const c = document.getElementById('confirm'); document.getElementById('ctitle').textContent = 'SEND A WHATSAPP MESSAGE'; document.getElementById('cdetail').textContent = 'WhatsApp message\\nTo: Mum (+91 •••••••210)\\n\\nI will be late\\n\\n(This cannot be undone.)'; document.getElementById('chint').textContent = 'Click ALLOW or DENY, or just say yes or no.'; c.hidden = false })()`)
     await sleep(500)
     await shot(main, 'main-confirm')
-    const welcome = await page('welcome.html', 9345)
-    await sleep(900)
-    await shot(welcome, 'welcome')
-    await main.ev('window.jarvis.openBrain()')
-    const brain = await page('brain.html', 9345)
-    await sleep(900)
-    await shot(brain, 'brain')
-    await main.ev('window.jarvis.openAccounts()')
-    const acct = await page('accounts.html', 9345)
-    await sleep(900)
-    await shot(acct, 'accounts')
+    await main.ev('document.getElementById("confirm").hidden = true; document.body.dataset.voice = "thinking"')
+    await sleep(700)
+    await shot(main, 'main-thinking')
+    await main.ev('document.body.dataset.voice = "idle"; document.getElementById("drawerbtn").click()')
+    await sleep(500)
+    await shot(main, 'main-conversation')
+    for (const p of ['general', 'voice', 'brain', 'accounts', 'setup']) {
+      await main.ev('document.dispatchEvent(new CustomEvent("settings-open", { detail: "' + p + '" }))')
+      await sleep(900)
+      await shot(main, 'settings-' + p)
+    }
   } catch (e) {
     console.log('ERR', e.message)
   }

@@ -24,7 +24,7 @@ const notifications = require('./notifications')
 
 if (process.env.JARVIS_NO_GPU !== '0') app.disableHardwareAcceleration() // a small voice window needs no GPU process (saves memory)
 const APP_ID = 'dev.jarvis.assistant'
-const SIZE = { w: 380, h: 580 }
+const SIZE = { w: 520, h: 760 }
 const MARGIN = 20
 
 const DEFAULTS = {
@@ -122,7 +122,9 @@ const publicSettings = () => ({
   micEcho: settings.micEcho,
   micNoise: settings.micNoise,
   micAgc: settings.micAgc,
-  micDevice: settings.micDevice
+  micDevice: settings.micDevice,
+  sttLocal: settings.sttLocal,
+  morningBriefing: settings.morningBriefing
 })
 
 // ---------------------------------------------------------------- window
@@ -384,13 +386,14 @@ ipcMain.on('window:hide', (e) => {
   if (e.sender === win?.webContents) win.hide()
 })
 
-const PATCHABLE = { jarvisSpeaks: 'boolean', voiceConverse: 'boolean', wakeWord: 'boolean', readNotifications: 'boolean', micEcho: 'boolean', micNoise: 'boolean', micAgc: 'boolean' }
+const PATCHABLE = { jarvisSpeaks: 'boolean', voiceConverse: 'boolean', wakeWord: 'boolean', readNotifications: 'boolean', micEcho: 'boolean', micNoise: 'boolean', micAgc: 'boolean', morningBriefing: 'boolean' }
 ipcMain.on('settings:patch', (e, patch) => {
   if (e.sender !== win?.webContents || !patch || typeof patch !== 'object') return
   const clean = {}
   for (const [k, type] of Object.entries(PATCHABLE)) if (typeof patch[k] === type) clean[k] = patch[k]
   if (patch.sttMode === 'auto' || patch.sttMode === 'offline') clean.sttMode = patch.sttMode
   if (typeof patch.micDevice === 'string' && patch.micDevice.length <= 300) clean.micDevice = patch.micDevice
+  if (patch.sttLocal === 'best' || patch.sttLocal === 'light') clean.sttLocal = patch.sttLocal
   if (patch.readMode === 'full' || patch.readMode === 'private') clean.readMode = patch.readMode
   if (typeof patch.callMe === 'string') clean.callMe = patch.callMe.replace(/[^\p{L}\p{N} .'-]/gu, '').trim().slice(0, 40)
   if (Array.isArray(patch.readMuted)) {
@@ -438,8 +441,6 @@ ipcMain.on('confirm:answer', (e, id, yes) => {
 let accountStore = null
 /** @type {ReturnType<typeof googleMod.create> | null} */
 let google = null
-/** @type {BrowserWindow | null} */
-let accountsWin = null
 
 function initAccounts() {
   accountStore = accountStoreMod.create({
@@ -463,35 +464,25 @@ function initAccounts() {
   })
 }
 
+/** the settings live inside the one window: show it and go to a page ('' closes the settings) */
+function openSettings(page = 'general') {
+  showWindow()
+  const wc = win?.webContents
+  if (!wc) return
+  if (wc.isLoading()) wc.once('did-finish-load', () => wc.send('settings:page', page)) // first start: the page is not there yet
+  else wc.send('settings:page', page)
+}
+const openAccounts = () => openSettings('accounts')
+const openBrain = () => openSettings('brain')
+const openWelcome = () => {
+  if (!settings.welcomed) update({ welcomed: true }) // opening it counts as seen; the tray menu brings it back
+  openSettings('setup')
+}
+
 const GUIDES = { google: 'google-mail-calendar.md', microsoft: 'microsoft-mail-calendar-teams.md' }
 const guideDir = () => (app.isPackaged ? path.join(process.resourcesPath, 'setup-guides') : path.join(__dirname, 'docs', 'setup'))
 
-function openAccounts() {
-  if (accountsWin) {
-    accountsWin.show()
-    accountsWin.focus()
-    return
-  }
-  accountsWin = new BrowserWindow({
-    width: 700,
-    height: 820,
-    minWidth: 560,
-    minHeight: 520,
-    backgroundColor: '#050b1a',
-    title: 'Jarvis — Accounts',
-    icon: iconPath(),
-    autoHideMenuBar: true,
-    webPreferences: { preload: path.join(__dirname, 'preload-accounts.js'), contextIsolation: true, nodeIntegration: false, sandbox: true }
-  })
-  accountsWin.setMenuBarVisibility(false)
-  accountsWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
-  accountsWin.webContents.on('will-navigate', (e) => e.preventDefault())
-  accountsWin.on('closed', () => {
-    accountsWin = null
-  })
-  accountsWin.loadFile(path.join(__dirname, 'renderer', 'accounts.html'))
-}
-const fromAccounts = (e) => !!accountsWin && e.sender === accountsWin.webContents
+const fromAccounts = (e) => e.sender === win?.webContents
 let connecting = false
 /** one sign-in at a time; always answers {ok, message|error} and never lets a secret out */
 async function guarded(fn) {
@@ -551,48 +542,18 @@ function initMemory() {
   }
 }
 
-/** @type {BrowserWindow | null} */
-let welcomeWin = null
-function openWelcome() {
-  if (welcomeWin) {
-    welcomeWin.show()
-    welcomeWin.focus()
-    return
-  }
-  welcomeWin = new BrowserWindow({
-    width: 680,
-    height: 800,
-    minWidth: 520,
-    minHeight: 520,
-    backgroundColor: '#050b1a',
-    title: 'Jarvis — Setup',
-    icon: iconPath(),
-    autoHideMenuBar: true,
-    webPreferences: { preload: path.join(__dirname, 'preload-welcome.js'), contextIsolation: true, nodeIntegration: false, sandbox: true }
-  })
-  welcomeWin.setMenuBarVisibility(false)
-  welcomeWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
-  welcomeWin.webContents.on('will-navigate', (e) => e.preventDefault())
-  welcomeWin.on('closed', () => {
-    welcomeWin = null
-    if (!settings.welcomed) update({ welcomed: true }) // closing it counts as seen; the tray menu brings it back
-  })
-  welcomeWin.loadFile(path.join(__dirname, 'renderer', 'welcome.html'))
-}
-const fromWelcome = (e) => !!welcomeWin && e.sender === welcomeWin.webContents
+const fromWelcome = (e) => e.sender === win?.webContents
 ipcMain.handle('welcome:state', (e) =>
   fromWelcome(e)
     ? {
-        models: { stt: audioModels.ready('stt'), voice: audioModels.ready('voice'), wake: audioModels.ready('wake') },
+        models: { parakeet: audioModels.ready('stt-parakeet'), stt: audioModels.ready('stt'), voice: audioModels.ready('voice'), wake: audioModels.ready('wake') },
         keys: brain ? brain.list().length : 0,
         accounts: accountStore ? accountStore.list().length : 0,
         wakeWord: !!settings.wakeWord
       }
     : null
 )
-ipcMain.handle('welcome:models', (e, bundles) => (fromWelcome(e) && Array.isArray(bundles) ? offerModels(bundles.filter((b) => ['stt', 'voice', 'wake'].includes(b))) : { ok: false, message: 'not available' }))
-ipcMain.on('welcome:brain', (e) => fromWelcome(e) && openBrain())
-ipcMain.on('welcome:accounts', (e) => fromWelcome(e) && openAccounts())
+ipcMain.handle('welcome:models', (e, bundles) => (fromWelcome(e) && Array.isArray(bundles) ? offerModels(bundles.filter((b) => ['stt', 'stt-parakeet', 'voice', 'wake'].includes(b))) : { ok: false, message: 'not available' }))
 ipcMain.handle('welcome:wake', (e, on) => {
   if (!fromWelcome(e)) return { ok: false }
   update({ wakeWord: !!on && audioModels.ready('wake') })
@@ -602,7 +563,7 @@ ipcMain.handle('welcome:wake', (e, on) => {
 ipcMain.on('welcome:finish', (e) => {
   if (!fromWelcome(e)) return
   update({ welcomed: true })
-  welcomeWin?.close()
+  openSettings('')
 })
 
 /** the morning briefing, once a day, when someone is at the PC; also what "Brief me now" does */
@@ -703,8 +664,6 @@ ipcMain.handle('tools:list', (e) => (e.sender === win?.webContents && tools ? to
 let brain = null
 let brainHistory = []
 let brainReady = { at: 0, v: false }
-/** @type {BrowserWindow | null} */
-let brainWin = null
 
 function initBrain() {
   brain = createBrain({
@@ -784,43 +743,10 @@ ipcMain.on('brain:reset', (e) => {
     memory?.clearMessages()
   }
 })
-ipcMain.on('accounts:open', (e) => {
-  if (e.sender === win?.webContents) openAccounts()
-})
-ipcMain.on('brain:open', (e) => {
-  if (e.sender === win?.webContents) openBrain()
-})
 
 const BRAIN_LINK_HOSTS = new Set([...Object.values(BRAIN_PRESETS).map((p) => (p.signup ? new URL(p.signup).hostname : '')).filter(Boolean), 'ollama.com'])
 
-function openBrain() {
-  if (brainWin) {
-    brainWin.show()
-    brainWin.focus()
-    return
-  }
-  brainWin = new BrowserWindow({
-    width: 700,
-    height: 860,
-    minWidth: 560,
-    minHeight: 520,
-    backgroundColor: '#050b1a',
-    title: 'Jarvis — AI brain',
-    icon: iconPath(),
-    autoHideMenuBar: true,
-    webPreferences: { preload: path.join(__dirname, 'preload-brain.js'), contextIsolation: true, nodeIntegration: false, sandbox: true }
-  })
-  brainWin.setMenuBarVisibility(false)
-  brainWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
-  brainWin.webContents.on('will-navigate', (e) => e.preventDefault())
-  brainWin.on('closed', () => {
-    brainWin = null
-    brainReady = { at: 0, v: false }
-  })
-  brainWin.loadFile(path.join(__dirname, 'renderer', 'brain.html'))
-}
-
-const fromBrainWin = (e) => !!brainWin && e.sender === brainWin.webContents && !!brain
+const fromBrainWin = (e) => e.sender === win?.webContents && !!brain
 const fail = (err) => ({ ok: false, error: String(err && err.message ? err.message : err).slice(0, 200) })
 
 ipcMain.handle('brainwin:state', async (e) => {

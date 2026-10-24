@@ -58,7 +58,7 @@
   async function command(text) {
     const t = text.toLowerCase().replace(/[?!.,]/g, ' ').replace(/\s+/g, ' ').trim()
     if (/\b(api keys?|ai (settings|brain|keys?)|brain (settings|keys)|set ?up (the |my |an? )?(ai|brain|api)|add (an? )?(api )?key|open (the )?brain)\b/.test(t)) {
-      window.jarvis.openBrain()
+      document.dispatchEvent(new CustomEvent('settings-open', { detail: 'brain' }))
       return 'Opening my brain settings.'
     }
     if (/\b(new chat|start (a )?new (chat|conversation)|forget (this|our|the) (chat|conversation)|start over|reset (the )?(chat|conversation))\b/.test(t)) {
@@ -184,9 +184,6 @@
     input.value = ''
     void handle(v)
   })
-  $('brainbtn').addEventListener('click', () => window.jarvis.openBrain())
-  $('acctbtn').addEventListener('click', () => window.jarvis.openAccounts())
-  $('menubtn').addEventListener('click', () => window.jarvis.showMenu())
   $('hidebtn').addEventListener('click', () => window.jarvis.hide())
 
   window.Assistant = { handle, command }

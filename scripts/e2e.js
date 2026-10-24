@@ -104,8 +104,7 @@ async function connect(match) {
     await w.ev('window.Assistant.handle("conversation mode off")')
 
     // add a brain (fake provider) through the brain window
-    await w.ev('window.jarvis.openBrain()')
-    const b = await connect('brain.html')
+    const b = w
     const add = await b.ev(`window.brainApi.add({provider:'custom',key:'KEY_E2E_1234',label:'fake',baseUrl:'http://127.0.0.1:8799/v1',model:'fake-model'})`)
     ok('brain window can add a key', add && add.ok === true, JSON.stringify(add))
 

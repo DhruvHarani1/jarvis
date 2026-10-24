@@ -52,7 +52,7 @@ for (const f of rendererFiles) assert.ok(!/window\.spidey\b/.test(read('renderer
 const pkg = JSON.parse(read('package.json'))
 const files = new Set(pkg.build.files)
 for (const m of main.matchAll(/require\('\.\/([\w-]+)'\)/g)) assert.ok(files.has(m[1] + '.js'), `${m[1]}.js is required by main.js but not packaged`)
-for (const f of ['preload.js', 'preload-brain.js']) assert.ok(files.has(f), f + ' is not packaged')
+for (const f of ['preload.js']) assert.ok(files.has(f), f + ' is not packaged')
 assert.equal(pkg.build.appId, 'dev.jarvis.assistant')
 assert.equal(pkg.devDependencies.electron, '44.7.2')
 

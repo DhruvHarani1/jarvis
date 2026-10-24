@@ -9,22 +9,27 @@
   </head>
   <body data-listening="0" data-voice="idle" data-wake="0" data-unread="0">
     <header class="top">
-      <span class="reactor" aria-hidden="true"></span>
       <b class="title">JARVIS</b>
       <span class="grow"></span>
       <button class="ib mail" id="inboxbtn" title="Notification inbox" aria-label="Notification inbox">✉<b id="icount" hidden>0</b></button>
-      <button class="ib" id="acctbtn" title="Accounts: mail and calendar" aria-label="Accounts">@</button>
-      <button class="ib" id="brainbtn" title="AI brain: API keys" aria-label="AI brain settings">AI</button>
-      <button class="ib" id="menubtn" title="Menu" aria-label="Menu">⋯</button>
+      <button class="ib" id="setbtn" title="Settings" aria-label="Settings">⚙</button>
       <button class="ib" id="hidebtn" title="Hide to tray" aria-label="Hide">–</button>
     </header>
-    <main>
-      <div class="hudstrip" aria-hidden="true">
-        <canvas id="wave" height="34"></canvas>
-        <div class="gauges"><span class="gauge" id="gcpu" data-level="low"><em>CPU</em><s><i></i></s><b>–</b></span><span class="gauge" id="gram" data-level="low"><em>RAM</em><s><i></i></s><b>–</b></span></div>
+    <main id="home">
+      <div class="stage">
+        <div class="readouts" aria-hidden="true">
+          <span class="gauge" id="gcpu" data-level="low"><em>CPU</em><s><i></i></s><b>–</b></span>
+          <span class="gauge" id="gram" data-level="low"><em>RAM</em><s><i></i></s><b>–</b></span>
+        </div>
+        <canvas id="orb" width="320" height="320" aria-hidden="true"></canvas>
+        <p class="state" id="state" aria-hidden="true">STANDING BY</p>
       </div>
-      <ol class="log" id="log" aria-live="polite"></ol>
+      <canvas id="wave" height="34" aria-hidden="true"></canvas>
       <p class="caption" id="caption" role="status" aria-live="polite">Press Ctrl+Alt+Space and talk, or type below.</p>
+      <section class="drawer" id="drawer" data-expanded="0">
+        <button class="drawerbtn" id="drawerbtn" aria-expanded="false" aria-controls="log">Conversation <span id="dcaret">▴</span></button>
+        <ol class="log" id="log" aria-live="polite"></ol>
+      </section>
       <div class="row">
         <button id="micbtn" class="mic" title="Talk to Jarvis (Ctrl+Alt+Space)" aria-label="Talk to Jarvis">🎤</button>
         <input id="input" type="text" maxlength="400" placeholder="Ask Jarvis anything…" autocomplete="off" spellcheck="false" aria-label="Ask Jarvis" />
@@ -41,6 +46,190 @@
         <ul id="iitems"></ul>
       </aside>
     </main>
+    <div class="settings" id="settings" hidden role="dialog" aria-label="Settings">
+      <nav class="snav" id="snav" aria-label="Settings pages">
+        <button data-go="general">General</button><button data-go="voice">Voice</button><button data-go="brain">AI brain</button><button data-go="accounts">Accounts</button><button data-go="setup">Setup</button>
+        <span class="grow"></span>
+        <button id="sclose" class="primary" aria-label="Back to Jarvis">Done ✕</button>
+      </nav>
+      <div class="pages">
+      <section class="page" id="page-general" data-page="general" hidden>
+        <h1 class="ptitle">General</h1>
+        <p class="intro">How Jarvis behaves day to day.</p>
+
+        <div class="card">
+          <label class="toggle"><input type="checkbox" id="s-jarvisSpeaks" /> <b>Jarvis speaks</b> <span>— answers aloud as well as on screen.</span></label>
+          <label class="toggle"><input type="checkbox" id="s-voiceConverse" /> <b>Keep listening after he answers</b> <span>— a back-and-forth conversation without pressing the key again.</span></label>
+          <label class="toggle"><input type="checkbox" id="s-readNotifications" /> <b>Read Windows notifications to me</b> <span>— he mentions new ones as they arrive.</span></label>
+          <label class="toggle"><input type="checkbox" id="s-morningBriefing" /> <b>Morning briefing</b> <span>— once a day, the first time you are at the PC.</span></label>
+        </div>
+        <div class="card">
+          <label>What should he call you?
+            <input id="s-callMe" type="text" maxlength="40" placeholder="sir" autocomplete="off" />
+          </label>
+          <p><button id="s-save" class="primary">Save name</button> <span id="s-savemsg" role="status"></span></p>
+        </div>
+        <div class="card">
+          <p class="muted">More switches (what Jarvis may do on the PC, Power mode, screen understanding, memory) are still in the tray menu for now; they move here next.</p>
+          <p><button id="s-menu">Open the full menu</button></p>
+        </div>
+      </section>
+      <section class="page" id="page-voice" data-page="voice" hidden>
+        <h1 class="ptitle">Voice</h1>
+        <p class="intro">Wake word, speech recognition and your microphone.</p>
+
+        <div class="card">
+          <h2>Wake word</h2>
+          <label class="toggle"><input type="checkbox" id="v-wakeWord" /> <b>Say "Hey Jarvis" to wake him</b> <span>— listens for that phrase only, on this PC.</span></label>
+          <p class="muted" id="v-wakehint"></p>
+        </div>
+        <div class="card">
+          <h2>Speech recognition</h2>
+          <label class="toggle"><input type="radio" name="v-stt" id="v-sttauto" /> <b>Most accurate</b> <span>— the online speech service first (needs a Groq key), then the models on this PC.</span></label>
+          <label class="toggle"><input type="radio" name="v-stt" id="v-sttoff" /> <b>Private</b> <span>— only the models on this PC. Nothing you say leaves it.</span></label>
+          <label class="toggle"><input type="checkbox" id="v-light" /> <b>Light mode</b> <span>— skip the large accurate model to save memory (about 1.2 GB when it is loaded).</span></label>
+          <p class="muted" id="v-models"></p>
+          <p><button id="v-dl" class="primary">Download voice models</button> <button id="v-dlp">Download the accurate model (480 MB)</button> <span id="v-dlmsg" role="status"></span></p>
+        </div>
+        <div class="card">
+          <h2>Microphone</h2>
+          <label>Which microphone?
+            <select id="v-device"></select>
+          </label>
+          <label class="toggle"><input type="checkbox" id="v-micEcho" /> <b>Echo cancellation</b> <span>— stops him hearing his own voice. Keep on unless you use headphones.</span></label>
+          <label class="toggle"><input type="checkbox" id="v-micNoise" /> <b>Noise suppression</b> <span>— off by default: it often clips quiet words.</span></label>
+          <label class="toggle"><input type="checkbox" id="v-micAgc" /> <b>Automatic volume</b> <span>— lifts a quiet voice.</span></label>
+          <p class="muted">Changes apply the next time you talk to him or the wake word restarts.</p>
+        </div>
+      </section>
+      <section class="page" id="page-brain" data-page="brain" hidden>
+        <h1 class="ptitle">AI brain</h1>
+        <p class="intro">Jarvis tries your keys in order. If one hits its limit or fails he moves to the next. After three failed tries he switches to the local model on your PC, and finally to the built-in rules.</p>
+
+      <div id="warn" class="warn" hidden></div>
+
+      <section class="card">
+        <label class="toggle"><input type="checkbox" id="natural" /> <b>Natural conversation</b> <span>— anything that is not a known command goes to the brain, so you can just talk to Jarvis.</span></label>
+      </section>
+
+      <section class="card">
+        <label class="toggle"><input type="checkbox" id="smart" /> <b>Smart order</b> <span>— try the fastest, most reliable key first (your order breaks ties). Turn off to always go top to bottom.</span></label>
+      </section>
+
+      <section>
+        <h2>Your keys <small id="count"></small></h2>
+        <div id="keys"></div>
+        <p id="nokeys" class="muted" hidden>No keys yet. Add one below — a free key takes about a minute to get.</p>
+      </section>
+
+      <section class="card">
+        <h2>Add a key</h2>
+        <div class="grid">
+          <label>Provider
+            <select id="provider"></select>
+          </label>
+          <label>Label <small>(optional)</small>
+            <input id="label" type="text" maxlength="40" placeholder="e.g. my NVIDIA key" />
+          </label>
+          <label class="wide">API key
+            <input id="key" type="password" autocomplete="off" spellcheck="false" placeholder="paste it here" />
+          </label>
+          <label class="wide" id="urlRow" hidden>Base URL <small>(https://…/v1)</small>
+            <input id="baseUrl" type="text" spellcheck="false" placeholder="https://api.example.com/v1" />
+          </label>
+          <label class="wide">Model <small>(optional — leave empty to pick automatically)</small>
+            <input id="model" type="text" spellcheck="false" placeholder="auto" />
+          </label>
+        </div>
+        <p id="hint" class="muted"></p>
+        <p><button id="get" class="link">Get a free key ↗</button> <button id="add" class="primary">Add key</button> <span id="addmsg" role="status"></span></p>
+        <p class="muted">Keys are encrypted with Windows (DPAPI) and stay on this PC. Jarvis sends only what you say to him plus one short status line (the time and your unread count). Never your notifications.</p>
+      </section>
+
+      <section class="card" id="local">
+        <h2>Local model (last resort)</h2>
+        <p id="ollama" class="muted"></p>
+        <p class="muted">Free and private, but it uses your RAM and CPU. Install <button class="link" data-url="https://ollama.com/">Ollama ↗</button> and run <code>ollama pull qwen2.5:1.5b</code> (about 1 GB).</p>
+      </section>
+
+      <section class="card">
+        <h2>Last answer</h2>
+        <p id="chain" class="muted">Nothing asked yet.</p>
+      </section>
+    
+      </section>
+      <section class="page" id="page-accounts" data-page="accounts" hidden>
+        <h1 class="ptitle">Accounts</h1>
+        <p class="intro">Connect your accounts so Jarvis can read your mail and calendar, add events, and send mail you approve. You sign in on Google's own page. Jarvis never sees your password, the sign-in is stored encrypted on this PC, and you can take it back any time.</p>
+
+      <div id="awarn" class="warn" hidden></div>
+
+      <section>
+        <h2>Connected <small id="acount"></small></h2>
+        <div id="list"></div>
+        <p id="none" class="muted" hidden>Nothing connected yet.</p>
+      </section>
+
+      <section class="card">
+        <h2>Add a Google account (Gmail + Calendar)</h2>
+        <p class="muted">You need your own free Google app first (about 15 minutes, once). <button class="link" id="guide">Open the step-by-step guide ↗</button></p>
+        <div class="grid">
+          <label class="wide">Client ID <small>(ends in .apps.googleusercontent.com)</small>
+            <input id="cid" type="text" autocomplete="off" spellcheck="false" placeholder="123456789-abc…apps.googleusercontent.com" />
+          </label>
+          <label class="wide">Client secret <small>(optional; Google shows one for Desktop apps)</small>
+            <input id="csec" type="password" autocomplete="off" spellcheck="false" placeholder="GOCSPX-…" />
+          </label>
+        </div>
+        <p class="muted">What may Jarvis do?</p>
+        <label class="toggle"><input type="checkbox" id="pRead" checked /> <b>Read my mail</b> <span>— "do I have mail from Mum?"</span></label>
+        <label class="toggle"><input type="checkbox" id="pSend" /> <b>Send mail</b> <span>— always shown to you and approved first.</span></label>
+        <label class="toggle"><input type="checkbox" id="pCal" checked /> <b>Read and add calendar events</b> <span>— "what is on today?", "add a dentist visit Friday at 4".</span></label>
+        <p><button id="connect" class="primary">Connect with Google</button> <span id="aaddmsg" role="status"></span></p>
+        <p class="muted">Your browser opens on Google's page. If it says "Google hasn't verified this app", that is your own app: choose Advanced, then Go to Jarvis.</p>
+      </section>
+
+      <section class="card">
+        <h2>Microsoft (Outlook, work calendar, Teams)</h2>
+        <p class="muted">Coming next. The guide is ready: <button class="link" id="msguide">Open the Microsoft guide ↗</button></p>
+      </section>
+    
+      </section>
+      <section class="page" id="page-setup" data-page="setup" hidden>
+        <h1 class="ptitle">Setup guide</h1>
+        <p class="intro">Jarvis listens to you, answers aloud and can act on this PC. Everything below is optional and can be done later from the tray menu. Nothing leaves this PC unless you add an AI key or sign in to an account yourself.</p>
+
+      <section class="card">
+        <h2>1. Microphone <small id="micstate"></small></h2>
+        <p class="muted">Jarvis only listens while the blue ring shows (or, if you turn the wake word on, for the phrase "Hey Jarvis" only, on this PC). Check that Windows lets him use your microphone.</p>
+        <p><button id="mic">Test my microphone</button> <span id="micmsg" role="status"></span></p>
+        <div id="meter" class="muted" aria-hidden="true"></div>
+      </section>
+
+      <section class="card">
+        <h2>2. Voice <small id="modelstate"></small></h2>
+        <p class="muted">A natural voice and speech recognition that run on this PC (about 130 MB, downloaded once, each file checked before use). Without them Jarvis uses the Windows voice and Windows recognition.</p>
+        <p><button id="models" class="primary">Download voice models</button> <span id="modelmsg" role="status"></span></p>
+        <label class="toggle"><input type="checkbox" id="wake" /> <b>Say "Hey Jarvis" to wake him</b> <span>— needs the wake word model (the download above includes it); always listening for that phrase only, on this PC.</span></label>
+      </section>
+
+      <section class="card">
+        <h2>3. AI brain <small id="brainstate"></small></h2>
+        <p class="muted">To chat and to handle requests that are not simple commands, Jarvis needs a free AI key (Groq is the quickest, about a minute). Simple commands such as opening apps, volume, timers and music work without one.</p>
+        <p><button id="brain" class="primary" data-open="brain">Add an AI key…</button></p>
+      </section>
+
+      <section class="card">
+        <h2>4. Mail and calendar <small id="acctstate"></small></h2>
+        <p class="muted">Optional. Connect your own Google account so Jarvis can read your mail and calendar and send mail you approve.</p>
+        <p><button id="accounts" data-open="accounts">Open Accounts…</button></p>
+      </section>
+
+      <p><button id="finish" class="primary">Done</button> <span class="muted">You can open this again from Settings → Setup.</span></p>
+    
+      </section>
+      </div>
+    </div>
     <script src="voice-core.js"></script>
     <script src="jarvis.js"></script>
     <script src="tts-player.js"></script>
@@ -48,7 +237,12 @@
     <script src="voice.js"></script>
     <script src="confirm.js"></script>
     <script src="hud.js"></script>
+    <script src="orb.js"></script>
     <script src="inbox.js"></script>
     <script src="reader.js"></script>
+    <script src="settings.js"></script>
+    <script src="brain.js"></script>
+    <script src="accounts.js"></script>
+    <script src="welcome.js"></script>
   </body>
 </html>

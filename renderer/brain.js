@@ -139,6 +139,7 @@
     await refresh()
   })
 
-  refresh()
-  setInterval(() => !busy && refresh(), 5000)
+  const shown = () => !$('page-brain').hidden
+  document.addEventListener('settings-page', (e) => e.detail === 'brain' && refresh())
+  setInterval(() => shown() && !busy && refresh(), 5000)
 })()

@@ -91,8 +91,7 @@ async function connect(match) {
     const w = await connect('index.html')
     for (let i = 0; i < 40 && !(await w.ev('!!window.Assistant && !!window.Confirm')); i++) await sleep(500)
     const lastLine = () => w.ev('document.getElementById("log").lastChild.textContent')
-    await w.ev('window.jarvis.openBrain()')
-    const b = await connect('brain.html')
+    const b = w
     ok('fake provider added', (await b.ev(`window.brainApi.add({provider:'custom',key:'KEY_E2E_1234',label:'fake',baseUrl:'http://127.0.0.1:8799/v1',model:'fake-model'})`)).ok === true)
 
     // nothing connected yet
@@ -100,14 +99,14 @@ async function connect(match) {
     ok('before connecting he says how to connect', /Connect a Google account first/.test(await lastLine()))
 
     // the Accounts window and sign-in
-    await w.ev('document.getElementById("acctbtn").click()')
-    const a = await connect('accounts.html')
+    await w.ev('document.getElementById("setbtn").click(); document.querySelector("[data-go=accounts]").click()')
+    const a = w
     await waitFor(async () => (await a.ev('document.readyState === "complete" && !!window.acctApi && document.getElementById("connect") !== null')) === true, 15000)
-    const title = await a.ev('document.title')
-    ok('Accounts window opens from the header button', /Accounts/.test(title), JSON.stringify(title))
+    const title = await a.ev('document.getElementById("page-accounts").hidden === false && document.querySelector(".ptitle:not([hidden])") && "Accounts"')
+    ok('the Accounts page opens from Settings in the same window', /Accounts/.test(title), JSON.stringify(title))
     ok('a bad client id is refused with a clear message', await (async () => {
       await a.ev('document.getElementById("cid").value = "oops"; document.getElementById("connect").click()')
-      return waitFor(async () => /does not look like a Google Client ID/.test(await a.ev('document.getElementById("addmsg").textContent')), 8000)
+      return waitFor(async () => /does not look like a Google Client ID/.test(await a.ev('document.getElementById("aaddmsg").textContent')), 8000)
     })())
     await a.ev('document.getElementById("cid").value = "abcdefghij-test.apps.googleusercontent.com"; document.getElementById("csec").value = "GOCSPX-e2e-secret-123"; document.getElementById("pSend").checked = true; document.getElementById("connect").click()')
     ok('sign-in completes and the account is listed', await waitFor(async () => /dhruv@example\.com/.test(await a.ev('document.getElementById("list").textContent'))))

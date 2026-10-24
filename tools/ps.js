@@ -55,4 +55,53 @@ function run(script, arg, { timeoutMs = 15_000, spawnFn = spawn } = {}) {
   })
 }
 
-module.exports = { run }
+/** PowerShell wraps error text from -EncodedCommand in CLIXML; turn it back into plain lines */
+function plainErrors(text) {
+  if (!String(text).startsWith('#< CLIXML')) return String(text)
+  const parts = [...String(text).matchAll(/<S S="[A-Za-z]+">([\s\S]*?)<\/S>/g)].map((m) => m[1].replace(/_x([0-9A-Fa-f]{4})_/g, (x, h) => String.fromCharCode(parseInt(h, 16))).replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"'))
+  return parts.join('').replace(/^\$ProgressPreference[^\n]*\n/, '').trim()
+}
+
+/**
+ * Run an arbitrary command line (Power mode only) and report everything: exit code, output, errors, whether it was stopped for taking too long.
+ * It runs as the normal user, never elevated, without a window.
+ * @returns {Promise<{code:number|null, stdout:string, stderr:string, timedOut:boolean}>}
+ */
+function exec(command, { timeoutMs = 30_000, spawnFn = spawn } = {}) {
+  return new Promise((resolve) => {
+    const encoded = Buffer.from('$ProgressPreference = "SilentlyContinue"\n' + command, 'utf16le').toString('base64')
+    let child
+    try {
+      child = spawnFn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-OutputFormat', 'Text', '-EncodedCommand', encoded], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+    } catch (e) {
+      return resolve({ code: null, stdout: '', stderr: String((e && e.message) || e), timedOut: false })
+    }
+    let out = ''
+    let err = ''
+    let timedOut = false
+    const timer = setTimeout(() => {
+      timedOut = true
+      try {
+        child.kill()
+      } catch {
+        /* gone */
+      }
+    }, timeoutMs)
+    child.stdout.on('data', (d) => {
+      if (out.length < MAX_OUT) out += d
+    })
+    child.stderr.on('data', (d) => {
+      if (err.length < MAX_OUT) err += d
+    })
+    child.on('error', (e) => {
+      clearTimeout(timer)
+      resolve({ code: null, stdout: out, stderr: String((e && e.message) || e), timedOut })
+    })
+    child.on('close', (code) => {
+      clearTimeout(timer)
+      resolve({ code, stdout: out, stderr: plainErrors(err), timedOut })
+    })
+  })
+}
+
+module.exports = { run, exec, plainErrors }

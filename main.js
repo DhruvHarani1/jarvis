@@ -36,7 +36,7 @@ const DEFAULTS = {
   welcomed: false, // the first-run setup window has been shown
   actions: true, // Jarvis may act on the PC through his tools (every action is checked, confirmed when risky, and logged)
   disabledTools: [], // tools the user switched off
-  powerMode: false, // reserved: arbitrary-command tools (none exist yet)
+  powerMode: false, // Power mode (run any command, type into apps): never saved as on; it is off every time Jarvis starts
   neuralVoice: true, // use the natural on-PC voice when its model is installed (else the Windows voice)
   sttMode: 'auto', // 'auto' = Groq Whisper if you have a Groq key, else Windows | 'offline' = Windows only
   voiceName: '', // '' = automatic; otherwise the exact installed Windows voice name
@@ -72,6 +72,7 @@ function loadSettings() {
   } catch {
     settings = { ...DEFAULTS }
   }
+  settings.powerMode = !!(process.env.SPIDEY_TEST && process.env.JARVIS_TEST_POWER) // a saved file can never switch it on
   if (!settings.startupDefaulted) {
     settings.startup = true
     settings.startupDefaulted = true
@@ -289,6 +290,23 @@ function menuTemplate() {
     check('Natural voice (on this PC)', 'neuralVoice'),
     { type: 'separator' },
     check('Jarvis can act on this PC (tools)', 'actions'),
+    {
+      label: 'Power mode: let Jarvis run any command (asks every time; off at every start)',
+      type: 'checkbox',
+      checked: !!settings.powerMode,
+      click: async (i) => {
+        if (!i.checked) return update({ powerMode: false })
+        const r = await dialog.showMessageBox(win, {
+          type: 'warning',
+          buttons: ['Turn on until I quit Jarvis', 'Cancel'],
+          defaultId: 1,
+          cancelId: 1,
+          message: 'Turn on Power mode?',
+          detail: 'Jarvis will be able to run PowerShell commands, type into other apps and press buttons in them. Every single action still shows you the exact command and waits for you to click Allow, and it runs as you, never as administrator. It switches itself off again whenever Jarvis restarts.'
+        })
+        update({ powerMode: r.response === 0 })
+      }
+    },
     { label: 'Undo last action', click: () => void tools?.runtime.undo().then((r) => speech.speak(r.ok ? r.spoken : r.error, { queue: true })) },
     { label: 'Setup guide…', click: () => openWelcome() },
     { label: 'Accounts: mail and calendar…', click: () => openAccounts() },
@@ -590,6 +608,7 @@ ipcMain.handle('fast:try', async (e, text) => {
   }
   if (!tools.runtime.isAvailable(f.name)) {
     if (/^(mail_|calendar_)/.test(f.name)) return { handled: true, say: 'Connect a Google account first. Open Accounts from the tray menu.' }
+    if (f.name === 'run_powershell') return { handled: true, say: 'Power mode is off. Turn it on from the tray menu if you want me to run commands.' }
     return { handled: false }
   }
   const r = await tools.runtime.call(f.name, f.args, { source: 'fastpath', tainted: conversationTainted })

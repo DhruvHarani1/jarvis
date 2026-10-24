@@ -16,6 +16,7 @@ const { createSpotifyTools } = require('./tools/spotify')
 const { createGoogleTools } = require('./tools/google')
 const { createMemoryTools } = require('./tools/memory')
 const { createChatTools } = require('./tools/chatapps')
+const { createPowerTools } = require('./tools/power')
 const { createAgent } = require('./agent')
 
 /**
@@ -53,7 +54,12 @@ function create({ electron, userData, brain, settings, confirm, onReminder, ps, 
     folder: folderPath
   })
   const runPs = ps || ((script, arg) => psReal.run(script, arg))
-  for (const t of [...tools, ...createSpotifyTools({ ps: runPs, shell }), ...(google && accountStore ? createGoogleTools({ google, store: accountStore }) : []), ...(memory ? createMemoryTools({ memory }) : []), ...(memory ? createChatTools({ memory, ps: runPs, shell, recentNotifications: recentNotifications || (() => []), google, store: accountStore }) : [])]) runtime.register(t)
+  // Power mode tools exist always but stay invisible and uncallable until the user switches Power mode on
+  const powerExec = process.env.SPIDEY_TEST && process.env.JARVIS_TEST_PS_LOG
+    ? async (command) => (fs.appendFileSync(process.env.JARVIS_TEST_PS_LOG, JSON.stringify({ which: 'exec', arg: command }) + '\n'), { code: 0, stdout: 'fake output', stderr: '', timedOut: false })
+    : (command, o) => psReal.exec(command, o)
+  const powerTools = createPowerTools({ exec: powerExec, ps: runPs, protectedPaths: [userData] })
+  for (const t of [...tools, ...createSpotifyTools({ ps: runPs, shell }), ...(google && accountStore ? createGoogleTools({ google, store: accountStore }) : []), ...powerTools, ...(memory ? createMemoryTools({ memory }) : []), ...(memory ? createChatTools({ memory, ps: runPs, shell, recentNotifications: recentNotifications || (() => []), google, store: accountStore }) : [])]) runtime.register(t)
   const agent = createAgent({ brain: { chat: (m, d, o) => brain().chat(m, d, o) }, runtime })
   sched.start()
   return { runtime, agent, audit: auditLog, scheduler: sched, sandbox, toolList: () => runtime.tiers() }

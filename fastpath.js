@@ -103,6 +103,9 @@ function parse(raw, o = {}) {
   if (/^(?:forget everything|forget all of it|erase (?:all )?(?:your )?memory|wipe (?:all )?(?:your )?memory|clear (?:your )?memory|delete (?:all )?(?:your )?memory)$/.test(t)) return { kind: 'tool', name: 'forget_everything', args: {} }
   if ((m = /^forget (?:about )?(.{2,80})$/.exec(t)) && !/^(everything|all)/.test(m[1])) return { kind: 'tool', name: 'forget', args: { query: m[1] } }
 
+  // Power mode: only by saying so explicitly (the command text is kept as typed)
+  if ((m = /^(?:run|execute) (?:the )?(?:powershell|shell|command)(?: command)?:? (.{2,500})$/i.exec(said))) return { kind: 'tool', name: 'run_powershell', args: { command: m[1].trim() } }
+
   // WhatsApp, Teams, contacts, meetings (the app must be named; always confirmed before anything is sent)
   const who = (x) => String(x).trim().replace(/^(?:my|to)\s+/i, '')
   if ((m = /^(?:send (?:a )?)?whatsapp(?: message)? (?:to )?(.{1,40}?) (?:saying|that|:) (.{1,500})$/i.exec(said)) || (m = /^(?:message|text|tell|send) (.{1,40}?) on whatsapp (?:saying |that |: ?)?(.{1,500})$/i.exec(said))) return { kind: 'tool', name: 'whatsapp_send', args: { to: who(m[1]), text: m[2].trim() } }

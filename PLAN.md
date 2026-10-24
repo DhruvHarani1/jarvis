@@ -412,6 +412,10 @@ Built (`tools/chatapps.js`), working the way a person does because neither app o
 - Not built: call controls (mute, camera, leave) in Teams, and reading a WhatsApp chat beyond notifications (no safe way).
 - Tests: 30 unit suites pass, including this one (links built from clean parts only, text cannot add link parameters, no key when the app is not in front, no-send on decline).
 
+### Power mode (2026-10-24)
+
+Built (`tools/power.js`): run_powershell, type_into_app, ui_click, all tier T3. Invisible to the AI model and uncallable until Power mode is switched on in the tray (a warning box first); it is **never saved as on**, so it is off at every start, and the renderer cannot switch it on. Every call needs a click on a box showing the exact command (a spoken yes never counts, tainted or not); commands run as the normal user, never elevated, with a 30 second limit, output capped and marked untrusted. A block list refuses wiping disks, damaging Windows, switching off Defender or the firewall, credential theft tools, run-as-administrator, download-and-run and Jarvis's own stored keys even after Allow; it is a safety net, not a boundary. Typing only happens if the target app really is in front; typed text has SendKeys metacharacters escaped. ui_click uses UI Automation patterns and falls back to a real mouse click only when that exact point belongs to the app. Tests: unit (block list, escaping, gating, output handling, real PowerShell) and an end-to-end run with Power mode off and on (`scripts/e2e-power.js`); typing and clicking were checked for real against a window the test creates itself. **Mistake while testing:** an earlier version of the spike typed into the user's own Notepad, which had a Google credentials file open; the spike now only uses its own window.
+
 ### M3: Memory (1-2 sessions)
 
 - SQLite schema + migrations, history, facts with FTS5, session summaries, memory commands, viewer/export, secret filter.

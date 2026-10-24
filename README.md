@@ -30,6 +30,7 @@ To build an installer: `npm run dist` (writes `release\Jarvis-Setup-<version>.ex
 | "Join my next meeting", "what did Mum say" | meeting link from your calendar; notifications |
 | "Remember my sister is called Asha", "what do you remember", "forget that" | local memory |
 | "Undo that" | undoes the last action where possible |
+| "Run powershell Get-Date" (Power mode only) | runs a command, after you read it and click Allow |
 | anything else | goes to the AI model, which can use the same tools |
 
 Everyday commands work with no AI key and no internet.
@@ -41,6 +42,7 @@ Everyday commands work with no AI key and no internet.
 - **Keys and sign-ins are encrypted** with Windows (DPAPI) and stay on this PC. Memory and contacts are a local database.
 - **Risky actions always ask first**, showing exactly what will happen (the file, the recipient and the whole message). Deletes go to the Recycle Bin. File tools only reach Desktop, Documents, Downloads, Pictures, Music and Videos.
 - **Text written by other people cannot give orders.** After Jarvis reads an email, the clipboard or a file name, a spoken "yes" no longer approves a risky action; only a click does. Facts stored while untrusted text was around are never fed back into prompts on their own.
+- **Power mode** (tray menu, off at every start) lets him run PowerShell commands, type into other apps and press buttons in them. Each call shows the exact command and needs a click on Allow (a spoken yes is never enough), runs as you and never as administrator, and a block list refuses the worst accidents (wiping disks, switching off Defender, reading his own stored keys). The block list is a safety net, not a wall: you reading the command is the real control.
 - **Everything he does is logged** (tray: "Activity log…"). "Forget everything" erases memory, contacts and the saved conversation.
 
 ## Setting up
@@ -53,7 +55,7 @@ Everyday commands work with no AI key and no internet.
 ## Develop
 
 ```
-npm run test:unit          # 30 fast suites: no microphone, no network
+npm run test:unit          # 31 fast suites: no microphone, no network
 npm run e2e                # drives the real app (fake microphone, fake AI provider, stand-ins for Google and PowerShell)
 node scripts/e2e-welcome.js
 node scripts/smoke-packaged.js   # after building: starts the packaged app and checks voice and speech recognition inside it

@@ -30,6 +30,7 @@ To build an installer: `npm run dist` (writes `release\Jarvis-Setup-<version>.ex
 | "Join my next meeting", "what did Mum say" | meeting link from your calendar; notifications |
 | "Remember my sister is called Asha", "what do you remember", "forget that" | local memory |
 | "Good morning", "what does my day look like" | a spoken briefing: calendar, unread mail, reminders, notifications (made on your PC, no AI provider involved; also given once each morning) |
+| "What is on my screen", "what does this error say" (off until you switch it on) | sends a screenshot to your AI provider after you click Allow |
 | "Undo that" | undoes the last action where possible |
 | "Run powershell Get-Date" (Power mode only) | runs a command, after you read it and click Allow |
 | anything else | goes to the AI model, which can use the same tools |
@@ -67,6 +68,10 @@ node scripts/measure-ram.js      # memory of the whole process tree
 Layout: `main.js` (window, tray, wiring) · `audio/` (speech worker: Moonshine, Piper, wake word) · `tools/` (the tool runtime, Windows tools, Spotify, Google, WhatsApp/Teams, memory) · `accounts/` (OAuth, Google) · `memory/` (SQLite) · `router/` (quota ledger, retry hints, health) · `brain.js` (providers and failover) · `agent.js` (tool-calling loop) · `fastpath.js` (commands that need no AI) · `renderer/` (windows).
 
 Test fixtures (`scratch/`) and downloaded models (`models-dev/`) are not committed.
+
+## Contributing
+
+Issues are the to-do list ([open issues](https://github.com/DhruvHarani1/jarvis/issues): look for *good first issue* and *help wanted*). [CONTRIBUTING.md](CONTRIBUTING.md) has how to run and test it and the safety rules every change must keep. The current top problem, a wake word that wakes and speech that is heard correctly, has its own plan: [docs/VOICE-ACCURACY.md](docs/VOICE-ACCURACY.md). Security problems: [SECURITY.md](SECURITY.md).
 
 ## Licences
 

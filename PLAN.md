@@ -420,7 +420,13 @@ Built (`tools/power.js`): run_powershell, type_into_app, ui_click, all tier T3. 
 
 - **New look:** the Spidey Sense comic styling (yellow and red, thick black outlines, italic comic fonts) is gone from every window. One shared Jarvis HUD theme (`renderer/hud.css`: dark glass, cyan light, thin lines with corner marks, mono labels, an arc reactor header) is used by the main window, AI keys, Accounts and Setup. The main window got a larger animated reactor (rings spin while thinking and glow with your voice), cleaner message panels and a sharper confirmation box. The AI button is plain text now. `node scripts/screenshots.js` takes screenshots of every window into scratch/shots to check the look.
 - **Morning briefing** (`briefing.js`, tool `morning_briefing`): the time and date, the rest of today's calendar, unread mail with the latest sender and subject, reminders for today, notifications that arrived in the last 12 hours (muted apps left out) and a low-battery warning, in about 5 sentences. Composed by plain code on this PC: **no AI model and no provider sees it**, it works offline, and a source that fails is mentioned, not guessed. Say "good morning", "brief me", "what does my day look like", "catch me up". It also speaks by itself once each morning (5 to 11 am) the first time Jarvis is up while someone is at the PC (idle under 5 minutes; checks every 10 minutes); tray: Brief me now, Morning briefing on/off. Tested: wording and edge cases (unit), isolation of failing sources, and in the real app ("good morning" with no provider call).
-- Not started in M6: call interrupts ("you have a call from Mum"), screen understanding, multi-step plans spoken back first, a fuller HUD (waveform, system gauges).
+- **New logo:** an arc reactor (`assets/icon.svg`, drawn by `scripts/make-icon.js`), used for the window, tray and installer; the spider is gone.
+- **Screen understanding** (`tools/screen.js`, `brain.vision`): "what is on my screen" sends a screenshot to a vision-capable model of your AI provider. Off until switched on in the tray (with a warning); every use shows a box naming the providers and needs a click; nothing is saved; the answer is untrusted text. Tested with fakes; **not yet tried with a real provider key and screen**.
+- **Multi-step requests are announced first** ("I will do 3 things: …") before the actions run.
+- **HUD strip:** a live waveform (your voice while listening, a swell while he speaks) and CPU and memory gauges.
+- **Call alerts** already existed (the notification reader announces an incoming call urgently, `renderer/reader.js`).
+- **Speech:** Groq Whisper is first again when a key exists (private mode stays on this PC). The wake-word and speech accuracy problem has its own plan: docs/VOICE-ACCURACY.md. 21 GitHub issues were opened for the open work.
+- Not started: a fuller HUD (system-wide gauges beyond CPU and memory), the voice work in the plan above.
 
 ### M3: Memory (1-2 sessions)
 

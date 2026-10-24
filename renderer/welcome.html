@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; script-src 'self'; img-src data:; media-src 'self'" />
+    <title>Jarvis — Setup</title>
+    <link rel="stylesheet" href="brain.css" />
+  </head>
+  <body>
+    <header class="hero">
+      <h1>WELCOME TO <em>JARVIS</em></h1>
+      <p>Jarvis listens to you, answers aloud and can act on this PC. Everything below is optional and can be done later from the tray menu. Nothing leaves this PC unless you add an AI key or sign in to an account yourself.</p>
+    </header>
+
+    <main>
+      <section class="card">
+        <h2>1. Microphone <small id="micstate"></small></h2>
+        <p class="muted">Jarvis only listens while the blue ring shows (or, if you turn the wake word on, for the phrase "Hey Jarvis" only, on this PC). Check that Windows lets him use your microphone.</p>
+        <p><button id="mic">Test my microphone</button> <span id="micmsg" role="status"></span></p>
+        <div id="meter" class="muted" aria-hidden="true"></div>
+      </section>
+
+      <section class="card">
+        <h2>2. Voice <small id="modelstate"></small></h2>
+        <p class="muted">A natural voice and speech recognition that run on this PC (about 130 MB, downloaded once, each file checked before use). Without them Jarvis uses the Windows voice and Windows recognition.</p>
+        <p><button id="models" class="primary">Download voice models</button> <span id="modelmsg" role="status"></span></p>
+        <label class="toggle"><input type="checkbox" id="wake" /> <b>Say "Hey Jarvis" to wake him</b> <span>— needs the wake word model below; always listening for that phrase only, on this PC.</span></label>
+      </section>
+
+      <section class="card">
+        <h2>3. AI brain <small id="brainstate"></small></h2>
+        <p class="muted">To chat and to handle requests that are not simple commands, Jarvis needs a free AI key (Groq is the quickest, about a minute). Simple commands such as opening apps, volume, timers and music work without one.</p>
+        <p><button id="brain" class="primary">Add an AI key…</button></p>
+      </section>
+
+      <section class="card">
+        <h2>4. Mail and calendar <small id="acctstate"></small></h2>
+        <p class="muted">Optional. Connect your own Google account so Jarvis can read your mail and calendar and send mail you approve.</p>
+        <p><button id="accounts">Open Accounts…</button></p>
+      </section>
+
+      <p><button id="finish" class="primary">Done</button> <span class="muted">You can open this window again from the tray menu: "Setup guide…".</span></p>
+    </main>
+    <script src="welcome.js"></script>
+  </body>
+</html>

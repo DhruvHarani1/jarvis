@@ -473,6 +473,16 @@ Memory with everything loaded at once was 744 MB RSS, so models must be loaded o
 - STT default: VAD + Moonshine base en. Wake word: sherpa KWS. Both confirmed.
 - TTS is the open problem. M1 starts with a TTS shootout and the default stays Windows SAPI until one candidate runs at RTF below 0.5 on this PC. Candidates: (1) Kokoro fp32 (304 MB archive; int8 may be the slow variant, since dynamic int8 can be slow on some CPUs), (2) Piper British male "alan" voices (very Jarvis) with the GPL phonemizer downloaded as an optional component, since Jarvis is free and open source and the phonemizer is not linked into the app, (3) pinning sherpa-onnx 1.x that still bundles espeak, (4) a smaller VITS voice with a lexicon, (5) optional cloud TTS as a user choice. Needs your decision on GPL (see open questions).
 
+### M5 results (2026-10-24)
+
+- **Installer builds:** `npm run dist` writes `release/Jarvis-Setup-0.1.0.exe` (117 MB, under the 150 MB target). Fixes needed on this PC: code signing is switched off in the build config (there is no certificate, and the signing tool hung downloading helpers), and electron-builder's 7zip cache extraction failed with the same antivirus rename error the old script already works around (finished by hand once; it should not recur). The installer was **not installed or run** here.
+- **Packaged app verified** (`node scripts/smoke-packaged.js` against `release/win-unpacked`): it starts, the audio worker runs from inside the asar archive with the native speech library unpacked beside it (asarUnpack for sherpa-onnx and the keyword file), the natural voice speaks and Moonshine transcribes. Found and fixed on the way: the wake-word keyword file must be read from the unpacked copy (the native code cannot read inside an asar).
+- **First-run setup window** (microphone test with a live level, voice-model download with the existing consent box, wake-word switch, links to the AI key and Accounts windows, Done). Shown once; closing counts as seen; tray: Setup guide. Tested end to end (`scripts/e2e-welcome.js`).
+- **Memory:** turning off GPU acceleration (a small window does not need it) saved about 120 MB in a same-session comparison: idle 434 to 317 MB, wake word listening 689 to 451 MB, after speaking 819 to 689 MB. Measurements on this PC vary a lot between runs (the same build read 287 / 449 / 537 MB earlier), so treat these as a trend, not a number. Still above the original idle budget; the remaining cost is the Chromium window that capture needs.
+- **Licence audit** (`scripts/license-audit.js`): the 18 production packages are all permissive; the GPL phonemizer is not a dependency (the audit fails if it ever becomes one).
+- **README rewritten**, `docs/RELEASE.md` is the release checklist (automated checks, a by-hand pass on a clean machine, publishing steps, known limits).
+- Not done: install and upgrade test on a clean Windows user or VM, auto-update test across two versions (needs a published release), code signing, the idle-without-a-window memory design. These are on the checklist.
+
 ## 13. Risks
 
 | Risk | Likelihood | Impact | Mitigation |

@@ -21,6 +21,7 @@ const { updater } = require('./updater')
 const karenLlm = require('./karen-llm')
 const notifications = require('./notifications')
 
+if (process.env.JARVIS_NO_GPU !== '0') app.disableHardwareAcceleration() // a small voice window needs no GPU process (saves memory)
 const APP_ID = 'dev.jarvis.assistant'
 const SIZE = { w: 380, h: 580 }
 const MARGIN = 20
@@ -32,6 +33,7 @@ const DEFAULTS = {
   jarvisSpeaks: true, // replies are spoken aloud (voice turns are always spoken)
   voiceConverse: false, // after he answers a spoken question, listen again for a follow-up
   wakeWord: false, // "Hey Jarvis": always listening for the wake phrase, fully offline
+  welcomed: false, // the first-run setup window has been shown
   actions: true, // Jarvis may act on the PC through his tools (every action is checked, confirmed when risky, and logged)
   disabledTools: [], // tools the user switched off
   powerMode: false, // reserved: arbitrary-command tools (none exist yet)
@@ -213,8 +215,7 @@ async function offerModels(bundles) {
   const items = []
   for (const b of bundles) for (const it of audioModels.missing(b).items) if (!items.some((x) => x.id === it.id)) items.push(it)
   if (!items.length) {
-    void dialog.showMessageBox(win, { type: 'info', message: 'The voice models are already installed.' })
-    return
+    return { ok: true, message: 'Already installed.' }
   }
   const total = items.reduce((n, i) => n + i.bytes, 0)
   const detail = items.map((i) => `• ${i.title}: ${audioModels.prettyBytes(i.bytes)}\n  ${i.why}. License: ${i.license}\n  from ${new URL(i.url).host}`).join('\n')
@@ -226,18 +227,21 @@ async function offerModels(bundles) {
     message: `Download voice models (about ${audioModels.prettyBytes(total)})?`,
     detail: detail + '\n\nEach file is checked against a fixed checksum before it is used. Nothing else is downloaded or sent.'
   })
-  if (r.response !== 0) return
+  if (r.response !== 0) return { ok: false, message: 'Not now.' }
   try {
     for (const it of items) {
       await audioModels.install(it.id, ({ got, total: t }) => win?.setProgressBar(t ? got / t : -1))
     }
     win?.setProgressBar(-1)
     void dialog.showMessageBox(win, { type: 'info', message: 'Voice models installed.', detail: 'Jarvis now understands you and speaks on this PC.' })
+    buildTray()
+    return { ok: true, message: 'Installed.' }
   } catch (e) {
     win?.setProgressBar(-1)
     void dialog.showMessageBox(win, { type: 'error', message: 'Could not install the voice models.', detail: String((e && e.message) || e) })
+    buildTray()
+    return { ok: false, message: String((e && e.message) || e) }
   }
-  buildTray()
 }
 
 /** write everything Jarvis remembers to a file the user can read, and show it */
@@ -286,6 +290,7 @@ function menuTemplate() {
     { type: 'separator' },
     check('Jarvis can act on this PC (tools)', 'actions'),
     { label: 'Undo last action', click: () => void tools?.runtime.undo().then((r) => speech.speak(r.ok ? r.spoken : r.error, { queue: true })) },
+    { label: 'Setup guide…', click: () => openWelcome() },
     { label: 'Accounts: mail and calendar…', click: () => openAccounts() },
     { label: 'Memory: export what I remember…', click: () => void exportMemory() },
     { label: 'Memory: forget everything…', click: () => void forgetEverythingDialog() },
@@ -499,6 +504,60 @@ function initMemory() {
     memory = null
   }
 }
+
+/** @type {BrowserWindow | null} */
+let welcomeWin = null
+function openWelcome() {
+  if (welcomeWin) {
+    welcomeWin.show()
+    welcomeWin.focus()
+    return
+  }
+  welcomeWin = new BrowserWindow({
+    width: 680,
+    height: 800,
+    minWidth: 520,
+    minHeight: 520,
+    backgroundColor: '#050b1a',
+    title: 'Jarvis — Setup',
+    icon: iconPath(),
+    autoHideMenuBar: true,
+    webPreferences: { preload: path.join(__dirname, 'preload-welcome.js'), contextIsolation: true, nodeIntegration: false, sandbox: true }
+  })
+  welcomeWin.setMenuBarVisibility(false)
+  welcomeWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  welcomeWin.webContents.on('will-navigate', (e) => e.preventDefault())
+  welcomeWin.on('closed', () => {
+    welcomeWin = null
+    if (!settings.welcomed) update({ welcomed: true }) // closing it counts as seen; the tray menu brings it back
+  })
+  welcomeWin.loadFile(path.join(__dirname, 'renderer', 'welcome.html'))
+}
+const fromWelcome = (e) => !!welcomeWin && e.sender === welcomeWin.webContents
+ipcMain.handle('welcome:state', (e) =>
+  fromWelcome(e)
+    ? {
+        models: { stt: audioModels.ready('stt'), voice: audioModels.ready('voice'), wake: audioModels.ready('wake') },
+        keys: brain ? brain.list().length : 0,
+        accounts: accountStore ? accountStore.list().length : 0,
+        wakeWord: !!settings.wakeWord
+      }
+    : null
+)
+ipcMain.handle('welcome:models', (e, bundles) => (fromWelcome(e) && Array.isArray(bundles) ? offerModels(bundles.filter((b) => ['stt', 'voice', 'wake'].includes(b))) : { ok: false, message: 'not available' }))
+ipcMain.on('welcome:brain', (e) => fromWelcome(e) && openBrain())
+ipcMain.on('welcome:accounts', (e) => fromWelcome(e) && openAccounts())
+ipcMain.handle('welcome:wake', (e, on) => {
+  if (!fromWelcome(e)) return { ok: false }
+  update({ wakeWord: !!on && audioModels.ready('wake') })
+  syncWake()
+  return { ok: true }
+})
+ipcMain.on('welcome:finish', (e) => {
+  if (!fromWelcome(e)) return
+  update({ welcomed: true })
+  welcomeWin?.close()
+})
 
 function initTools() {
   tools = appTools.create({
@@ -892,6 +951,7 @@ if (!app.requestSingleInstanceLock()) {
     audio.onCrash((code) => console.error('audio worker crashed, exit', code))
     initBrain()
     initMemory()
+    if (process.env.JARVIS_TEST_WELCOME || (!settings.welcomed && !process.env.SPIDEY_TEST && !process.argv.includes('--autostart'))) setTimeout(() => openWelcome(), 1500)
     initAccounts()
     initTools()
     const ours = (url) => typeof url === 'string' && url.startsWith('file://')

@@ -93,7 +93,8 @@ function create({ sherpa, models, requirePhonemizer, threads = 2, now = Date.now
     kws = new sherpa.KeywordSpotter({
       featConfig: { sampleRate: SAMPLE_RATE, featureDim: 80 },
       modelConfig: { transducer: { encoder: f('encoder'), decoder: f('decoder'), joiner: f('joiner') }, tokens: path.join(dir, 'tokens.txt'), numThreads: 1, provider: 'cpu' },
-      keywordsFile: path.join(__dirname, 'keywords.txt'),
+      // the native library reads this file itself, so inside an installed app it must come from the unpacked copy, not from the asar archive
+      keywordsFile: path.join(__dirname, 'keywords.txt').replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`),
       keywordsScore: 1.0,
       keywordsThreshold: 0.25
     })

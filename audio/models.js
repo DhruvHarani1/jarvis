@@ -100,11 +100,13 @@ function locate(id) {
     const p = path.join(r, m.dir)
     if (fs.existsSync(p)) return p
   }
-  // developer checkout keeps the phonemizer in models-dev/pp/node_modules
+  // developer layout: the phonemizer was installed with npm into <models folder>/pp/node_modules
   if (id.startsWith('phonemizer')) {
     const name = id === 'phonemizer' ? 'piper-phonemize-node' : 'piper-phonemize-win-x64'
-    const p = path.join(__dirname, '..', 'models-dev', 'pp', 'node_modules', name)
-    if (fs.existsSync(p)) return p
+    for (const r of [...roots(), path.join(__dirname, '..', 'models-dev')]) {
+      const p = path.join(r, 'pp', 'node_modules', name)
+      if (fs.existsSync(p)) return p
+    }
   }
   return null
 }

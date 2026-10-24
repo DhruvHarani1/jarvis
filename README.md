@@ -1,35 +1,70 @@
 # Jarvis
 
-A voice-first AI assistant for Windows. Talk to it, ask it things, let it read your notifications aloud.
+A voice-first AI assistant for Windows. Say "Hey Jarvis", ask or command, hear a natural voice answer. He can open apps, control volume and music, set timers and reminders, read and send your mail, manage your calendar, message people on WhatsApp and Teams, remember things about you, and read your notifications aloud. Free, open source, and private by default: speech recognition, the wake word and the voice run on your own PC.
 
-Jarvis started life inside [Spidey Sense](https://github.com/DhruvHarani1/spidey-sense) (as "Karen") and was split out so that Spidey can stay a small, sharp danger-sense widget. See `FOCUS-PLAN.md` in that repo for the reasoning.
+> Status: version 0.1.0, not released yet. Built by one developer with Claude. See [PLAN.md](PLAN.md) for the design and what is done, and [RESEARCH.md](RESEARCH.md) for why.
 
-## What it does (Phase 1 = everything voice from Spidey 0.2.7)
+## Quick start
 
-- **Talk**: Ctrl+Alt+Space (or the mic button). Speak, he answers aloud sentence by sentence while still thinking.
-- **Wake word** (opt-in, offline): say "Hey Jarvis" / "Okay Jarvis". Tray menu or say "turn on the wake word".
-- **AI brain**: free API keys (NVIDIA, Groq, Gemini, OpenRouter, custom) with automatic failover, then local Ollama. Keys are encrypted with Windows DPAPI.
-- **Speech to text**: Groq Whisper when you have a Groq key, otherwise Windows' offline recogniser ("Windows only" in the tray keeps audio on the PC).
-- **Notification inbox + reader**: every Windows notification in one list; optionally read aloud ("Dhruv sir, you received a message from Mum on WhatsApp…"), private mode says who but not what.
-- **Voices**: switch between the Windows voices ("change voice").
-
-Jarvis cannot act on the PC yet (no commands, no process control): conversation only. That is deliberate for Phase 1.
-
-## Privacy
-
-Microphone is open only while the blue reactor pulses (or, with the wake word on, a small offline recogniser listens for the wake phrase only; nothing is recorded or sent). API keys never leave the PC except to their own provider. Notification contents are never sent to an AI provider.
-
-## Develop
+From source (needs Node.js 24 or newer):
 
 ```
 npm install
 npm start
-npm run test:unit      # fast unit + wiring tests
-node scripts/e2e.js    # drives the real app (fake mic, fake wake WAV, fake AI provider)
 ```
 
-`scratch/` holds generated test fixtures (fake microphone WAV, wake-phrase WAVs from `scratch/make-wake-wavs.ps1`) and is not committed.
+A setup window opens the first time. It checks your microphone, offers the voice models (about 130 MB, each file checked before use), and points you to the AI key and account steps. Everything in it is optional and can be done later from the tray menu ("Setup guide…").
 
-## Status
+To build an installer: `npm run dist` (writes `release\Jarvis-Setup-<version>.exe`).
 
-Phase 1 of the split: files copied from Spidey Sense, new minimal shell. Not released yet.
+## What you can say
+
+| Say | What happens |
+|-----|--------------|
+| "Open Spotify", "open Teams", "open YouTube" | opens the app or site |
+| "Volume 30", "mute", "louder", "next song", "pause" | system sound and media keys |
+| "What's playing", "play despacito on Spotify", "play my liked songs" | Spotify (free accounts: links and search, you press play) |
+| "Set a timer for five minutes", "remind me in an hour to call Mum" | timers and reminders |
+| "Check my email", "what's on my calendar tomorrow", "add a dentist visit Friday at 4" | Gmail and Google Calendar (your own sign-in) |
+| "Send a WhatsApp to Mum saying I'm late", "message Rahul on Teams saying…" | opens the chat with your text typed in, asks you first, then sends |
+| "Join my next meeting", "what did Mum say" | meeting link from your calendar; notifications |
+| "Remember my sister is called Asha", "what do you remember", "forget that" | local memory |
+| "Undo that" | undoes the last action where possible |
+| anything else | goes to the AI model, which can use the same tools |
+
+Everyday commands work with no AI key and no internet.
+
+## Privacy and safety
+
+- **Microphone:** only open while the blue ring shows, or, if you turn the wake word on, for the phrase "Hey Jarvis" only, analysed on this PC and never stored.
+- **Nothing is sent anywhere** unless you add an AI key (what you say, plus a short status line and any notes you asked him to keep, goes to that provider), sign in to Google (calls go straight to Google), or use WhatsApp/Teams (through the apps themselves).
+- **Keys and sign-ins are encrypted** with Windows (DPAPI) and stay on this PC. Memory and contacts are a local database.
+- **Risky actions always ask first**, showing exactly what will happen (the file, the recipient and the whole message). Deletes go to the Recycle Bin. File tools only reach Desktop, Documents, Downloads, Pictures, Music and Videos.
+- **Text written by other people cannot give orders.** After Jarvis reads an email, the clipboard or a file name, a spoken "yes" no longer approves a risky action; only a click does. Facts stored while untrusted text was around are never fed back into prompts on their own.
+- **Everything he does is logged** (tray: "Activity log…"). "Forget everything" erases memory, contacts and the saved conversation.
+
+## Setting up
+
+- AI keys: [docs/setup/free-keys.md](docs/setup/free-keys.md) (Groq is enough to start; Cerebras is a good second key)
+- Google mail and calendar: [docs/setup/google-mail-calendar.md](docs/setup/google-mail-calendar.md)
+- Microsoft (Outlook, work calendar, Teams): [docs/setup/microsoft-mail-calendar-teams.md](docs/setup/microsoft-mail-calendar-teams.md) (the sign-in itself is not built yet)
+- FreeLLMAPI as an optional provider: [docs/setup/freellmapi.md](docs/setup/freellmapi.md)
+
+## Develop
+
+```
+npm run test:unit          # 30 fast suites: no microphone, no network
+npm run e2e                # drives the real app (fake microphone, fake AI provider, stand-ins for Google and PowerShell)
+node scripts/e2e-welcome.js
+node scripts/smoke-packaged.js   # after building: starts the packaged app and checks voice and speech recognition inside it
+node scripts/license-audit.js    # production dependencies must be permissive
+node scripts/measure-ram.js      # memory of the whole process tree
+```
+
+Layout: `main.js` (window, tray, wiring) · `audio/` (speech worker: Moonshine, Piper, wake word) · `tools/` (the tool runtime, Windows tools, Spotify, Google, WhatsApp/Teams, memory) · `accounts/` (OAuth, Google) · `memory/` (SQLite) · `router/` (quota ledger, retry hints, health) · `brain.js` (providers and failover) · `agent.js` (tool-calling loop) · `fastpath.js` (commands that need no AI) · `renderer/` (windows).
+
+Test fixtures (`scratch/`) and downloaded models (`models-dev/`) are not committed.
+
+## Licences
+
+Jarvis is MIT licensed ([LICENSE](LICENSE)). Third-party software and the ideas taken from FreeLLMAPI are listed in [NOTICE](NOTICE). Voice models are downloaded on demand and keep their own licences, shown before download. The Piper voice needs a GPL-3.0 phonemizer, which is downloaded as a separate optional component and is never part of the installer.

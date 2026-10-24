@@ -28,16 +28,29 @@ function wavToFloat32(wav) {
   return null
 }
 
-/** linear resample of mono Float32 */
+/** resample mono Float32 (band-limited, see below) */
 function resample(input, from, to) {
   if (from === to) return Float32Array.from(input)
+  // band-limited: a Hann-windowed sinc low-pass at the lower of the two Nyquist frequencies, so down-sampling 48 kHz to 16 kHz
+  // does not fold high frequencies back into the voice band (plain interpolation did, adding a hiss that hurts recognition)
   const ratio = from / to
   const n = Math.max(0, Math.floor(input.length / ratio))
   const out = new Float32Array(n)
+  const cutoff = Math.min(1, to / from)
+  const half = Math.ceil(16 / cutoff)
   for (let i = 0; i < n; i++) {
-    const p = i * ratio
-    const a = Math.floor(p)
-    out[i] = input[a] + ((input[a + 1] === undefined ? input[a] : input[a + 1]) - input[a]) * (p - a)
+    const center = i * ratio
+    const c = Math.floor(center)
+    let acc = 0
+    let wsum = 0
+    for (let k = Math.max(0, c - half + 1); k <= Math.min(input.length - 1, c + half); k++) {
+      const x = k - center
+      const sx = Math.PI * x * cutoff
+      const w = (x === 0 ? 1 : Math.sin(sx) / sx) * 0.5 * (1 + Math.cos((Math.PI * x) / half)) * cutoff
+      acc += input[k] * w
+      wsum += w
+    }
+    out[i] = wsum ? acc / wsum : 0
   }
   return out
 }
@@ -46,7 +59,7 @@ function resample(input, from, to) {
  * Cut the silence/room noise before and after the speech (Moonshine answers nothing when a clip starts with seconds of noise).
  * Energy based: the quiet level is learned from the clip itself. Returns the input unchanged when no speech is found.
  */
-function trimSilence(samples, rate = 16000, { padStartMs = 250, padEndMs = 350 } = {}) {
+function trimSilence(samples, rate = 16000, { padStartMs = 400, padEndMs = 500, minRms = 0.006 } = {}) {
   const frame = Math.round(rate * 0.02)
   const n = Math.floor(samples.length / frame)
   if (n < 5) return samples
@@ -58,7 +71,7 @@ function trimSilence(samples, rate = 16000, { padStartMs = 250, padEndMs = 350 }
   }
   const sorted = Array.from(rms).sort((a, b) => a - b)
   const floor = sorted[Math.floor(n * 0.1)]
-  const threshold = Math.max(0.012, floor * 4)
+  const threshold = Math.max(minRms, floor * 3.5) // low minimum: a quiet speaker on a laptop microphone must not be cut off
   let first = -1
   let last = -1
   for (let f = 0; f < n; f++) {
@@ -74,4 +87,23 @@ function trimSilence(samples, rate = 16000, { padStartMs = 250, padEndMs = 350 }
   return samples.subarray(start, end)
 }
 
-module.exports = { wavToFloat32, resample, trimSilence }
+/**
+ * Bring a quiet recording up to a level the recogniser likes (never louder than 6x, and loud recordings are left alone).
+ * Looks at the 99th percentile of the loudness, not the single loudest sample, so one click does not stop the boost.
+ */
+function normalize(samples, target = 0.4, maxGain = 6) {
+  if (samples.length < 100) return samples
+  const step = Math.max(1, Math.floor(samples.length / 8000))
+  const a = []
+  for (let i = 0; i < samples.length; i += step) a.push(Math.abs(samples[i]))
+  a.sort((x, y) => x - y)
+  const p99 = a[Math.floor(a.length * 0.99)]
+  if (!(p99 > 0.002) || p99 >= 0.25) return samples
+  const g = Math.min(maxGain, target / p99)
+  if (g < 1.15) return samples
+  const out = new Float32Array(samples.length)
+  for (let i = 0; i < samples.length; i++) out[i] = Math.max(-1, Math.min(1, samples[i] * g))
+  return out
+}
+
+module.exports = { wavToFloat32, resample, trimSilence, normalize }

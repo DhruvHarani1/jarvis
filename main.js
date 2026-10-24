@@ -35,6 +35,10 @@ const DEFAULTS = {
   voiceConverse: false, // after he answers a spoken question, listen again for a follow-up
   wakeWord: false, // "Hey Jarvis": always listening for the wake phrase, fully offline
   screenVision: false, // "what is on my screen": sends a picture of the screen to your AI provider when you ask (asks every time)
+  micEcho: true, // microphone clean-up Windows can do: echo cancellation (keeps Jarvis's own voice out of the recording)
+  micNoise: false, // noise suppression (can chop quiet speech; off until the Voice Lab shows it helps)
+  micAgc: true, // automatic gain (helps quiet or distant voices)
+  micDevice: '', // '' = the Windows default microphone
   sttLocal: 'best', // speech models on this PC: 'best' = Parakeet first (more memory), 'light' = Moonshine only
   morningBriefing: true, // greet with the day's briefing the first time Jarvis is up each morning (5 to 11 am)
   lastBriefing: '', // the day it was last given
@@ -114,7 +118,11 @@ const publicSettings = () => ({
   readNotifications: settings.readNotifications,
   readMode: settings.readMode,
   callMe: settings.callMe,
-  readMuted: settings.readMuted
+  readMuted: settings.readMuted,
+  micEcho: settings.micEcho,
+  micNoise: settings.micNoise,
+  micAgc: settings.micAgc,
+  micDevice: settings.micDevice
 })
 
 // ---------------------------------------------------------------- window
@@ -376,12 +384,13 @@ ipcMain.on('window:hide', (e) => {
   if (e.sender === win?.webContents) win.hide()
 })
 
-const PATCHABLE = { jarvisSpeaks: 'boolean', voiceConverse: 'boolean', wakeWord: 'boolean', readNotifications: 'boolean' }
+const PATCHABLE = { jarvisSpeaks: 'boolean', voiceConverse: 'boolean', wakeWord: 'boolean', readNotifications: 'boolean', micEcho: 'boolean', micNoise: 'boolean', micAgc: 'boolean' }
 ipcMain.on('settings:patch', (e, patch) => {
   if (e.sender !== win?.webContents || !patch || typeof patch !== 'object') return
   const clean = {}
   for (const [k, type] of Object.entries(PATCHABLE)) if (typeof patch[k] === type) clean[k] = patch[k]
   if (patch.sttMode === 'auto' || patch.sttMode === 'offline') clean.sttMode = patch.sttMode
+  if (typeof patch.micDevice === 'string' && patch.micDevice.length <= 300) clean.micDevice = patch.micDevice
   if (patch.readMode === 'full' || patch.readMode === 'private') clean.readMode = patch.readMode
   if (typeof patch.callMe === 'string') clean.callMe = patch.callMe.replace(/[^\p{L}\p{N} .'-]/gu, '').trim().slice(0, 40)
   if (Array.isArray(patch.readMuted)) {

@@ -15,15 +15,17 @@
     if (cap || starting) return
     starting = true
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: window.Core.micConstraints() })
       const ctx = new AudioContext()
       await ctx.audioWorklet.addModule('pcm-worklet.js')
       const src = ctx.createMediaStreamSource(stream)
       const node = new AudioWorkletNode(ctx, 'pcm-tap')
       src.connect(node)
+      const rs = VC.createResampler(ctx.sampleRate, VC.TARGET_RATE)
       node.port.onmessage = (ev) => {
+        const out = rs.push(ev.data) // keep the resampler's history even while paused
         if (paused) return
-        window.jarvis.wakePcm(VC.resample(ev.data, ctx.sampleRate, VC.TARGET_RATE))
+        window.jarvis.wakePcm(out)
       }
       cap = { stream, ctx, node }
       window.jarvis.wakeMic({ ok: true })

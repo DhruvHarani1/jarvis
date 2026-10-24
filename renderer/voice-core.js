@@ -10,22 +10,74 @@
   const TARGET_RATE = 16000
 
   /** linear resample of a mono Float32Array */
-  function resample(input, fromRate, toRate = TARGET_RATE) {
-    if (fromRate === toRate) return Float32Array.from(input)
-    const ratio = fromRate / toRate
+  function resample(input, from, to = TARGET_RATE) {
+    if (from === to) return Float32Array.from(input)
+    // band-limited: a Hann-windowed sinc low-pass at the lower of the two Nyquist frequencies, so down-sampling 48 kHz to 16 kHz
+    // does not fold high frequencies back into the voice band (plain interpolation did, adding a hiss that hurts recognition)
+    const ratio = from / to
     const n = Math.max(0, Math.floor(input.length / ratio))
     const out = new Float32Array(n)
+    const cutoff = Math.min(1, to / from)
+    const half = Math.ceil(16 / cutoff)
     for (let i = 0; i < n; i++) {
-      const pos = i * ratio
-      const i0 = Math.floor(pos)
-      const i1 = Math.min(i0 + 1, input.length - 1)
-      const f = pos - i0
-      out[i] = input[i0] * (1 - f) + input[i1] * f
+      const center = i * ratio
+      const c = Math.floor(center)
+      let acc = 0
+      let wsum = 0
+      for (let k = Math.max(0, c - half + 1); k <= Math.min(input.length - 1, c + half); k++) {
+        const x = k - center
+        const sx = Math.PI * x * cutoff
+        const w = (x === 0 ? 1 : Math.sin(sx) / sx) * 0.5 * (1 + Math.cos((Math.PI * x) / half)) * cutoff
+        acc += input[k] * w
+        wsum += w
+      }
+      out[i] = wsum ? acc / wsum : 0
     }
     return out
   }
 
-  /** mono float samples (-1..1) -> a complete 16-bit PCM WAV file */
+  /**
+   * The same band-limited resampler for a live stream: feed it microphone chunks as they come, take back 16 kHz samples.
+   * It keeps the tail of the previous chunk, so there is no click at chunk borders (resampling every chunk on its own had one).
+   */
+  function createResampler(from, to = TARGET_RATE) {
+    if (from === to) return { push: (c) => Float32Array.from(c) }
+    const ratio = from / to
+    const cutoff = Math.min(1, to / from)
+    const half = Math.ceil(16 / cutoff)
+    let buf = new Float32Array(0)
+    let pos = 0
+    return {
+      push(chunk) {
+        const joined = new Float32Array(buf.length + chunk.length)
+        joined.set(buf)
+        joined.set(chunk, buf.length)
+        buf = joined
+        const out = []
+        for (;;) {
+          const c = Math.floor(pos)
+          if (c + half >= buf.length) break
+          let acc = 0
+          let wsum = 0
+          for (let k = Math.max(0, c - half + 1); k <= c + half; k++) {
+            const x = k - pos
+            const sx = Math.PI * x * cutoff
+            const w = (x === 0 ? 1 : Math.sin(sx) / sx) * 0.5 * (1 + Math.cos((Math.PI * x) / half)) * cutoff
+            acc += buf[k] * w
+            wsum += w
+          }
+          out.push(wsum ? acc / wsum : 0)
+          pos += ratio
+        }
+        const drop = Math.max(0, Math.floor(pos) - half)
+        if (drop > 0) {
+          buf = buf.slice(drop)
+          pos -= drop
+        }
+        return Float32Array.from(out)
+      }
+    }
+  }
   function encodeWav(samples, rate = TARGET_RATE) {
     const bytes = samples.length * 2
     const buf = new ArrayBuffer(44 + bytes)
@@ -67,12 +119,11 @@
     const calibMs = o.calibMs ?? 250
     const minThr = o.minThreshold ?? 0.012
     const startMs = o.startMs ?? 100
-    const endSilenceMs = o.endSilenceMs ?? 1100
+    const endSilenceMs = o.endSilenceMs ?? 1200
     const maxMs = o.maxMs ?? 15000
     const noSpeechMs = o.noSpeechMs ?? 6000
     let t = 0
-    let calibSum = 0
-    let calibN = 0
+    const calibLevels = []
     let thr = minThr
     let loud = 0
     let quiet = 0
@@ -84,9 +135,9 @@
         const ev = []
         t += dtMs
         if (t <= calibMs && !spoke) {
-          calibSum += level
-          calibN++
-          if (t + dtMs > calibMs) thr = Math.max(minThr, (calibSum / Math.max(1, calibN)) * 2.8)
+          calibLevels.push(level)
+          // the quiet end of what was heard (the start beep or an early word must not raise the bar)
+          if (t + dtMs > calibMs) thr = Math.max(minThr, [...calibLevels].sort((x, y) => x - y)[Math.floor(calibLevels.length * 0.25)] * 3)
           return ev
         }
         if (level > thr) {
@@ -121,5 +172,5 @@
     }
   }
 
-  return { resample, encodeWav, rms, createVad, TARGET_RATE }
+  return { resample, createResampler, encodeWav, rms, createVad, TARGET_RATE }
 })

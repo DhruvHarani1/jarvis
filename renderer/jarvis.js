@@ -26,7 +26,15 @@
   }
   window.jarvis.onAssistantLine((text) => addLine('jarvis', String(text || '')))
 
+  /** the microphone request, from the user's settings (echo cancellation / noise suppression / automatic gain, and which microphone) */
+  function micConstraints() {
+    const a = { channelCount: 1, echoCancellation: settings.micEcho !== false, noiseSuppression: settings.micNoise === true, autoGainControl: settings.micAgc !== false }
+    if (settings.micDevice) a.deviceId = { ideal: settings.micDevice }
+    return a
+  }
+
   window.Core = {
+    micConstraints,
     say,
     setUnread,
     getSettings: () => settings,

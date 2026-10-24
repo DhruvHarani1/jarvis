@@ -81,7 +81,7 @@
     const ctx = audioCtx() // already loaded in the background, or loading now in parallel with the microphone
     const ready = actxReady
     try {
-      ;[stream] = await Promise.all([navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } }), ready])
+      ;[stream] = await Promise.all([navigator.mediaDevices.getUserMedia({ audio: window.Core.micConstraints() }), ready])
     } catch (err) {
       setState('idle')
       window.Core.say(

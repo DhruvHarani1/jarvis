@@ -8,7 +8,7 @@
  */
 const fs = require('node:fs')
 const path = require('node:path')
-const { trimSilence } = require('./pcm')
+const { trimSilence, normalize } = require('./pcm')
 
 const SAMPLE_RATE = 16000
 const MAX_TTS_CHARS = 600
@@ -78,7 +78,7 @@ function create({ sherpa, models, requirePhonemizer, threads = 2, now = Date.now
       return String(r.getResult(s).text || '').trim()
     }
     // speech only (seconds of room noise before it make the model answer nothing); if that still gives nothing, try the whole clip
-    const cut = trimSilence(samples, SAMPLE_RATE)
+    const cut = normalize(trimSilence(samples, SAMPLE_RATE))
     let text = decode(cut)
     if (!text && cut.length !== samples.length) text = decode(samples)
     return { text, ms: now() - t0, seconds: cut.length / SAMPLE_RATE, model: kind }

@@ -125,20 +125,33 @@ function winTranscribe(wav, phrases = [], timeoutMs = 20_000) {
 async function transcribe(wav, o = {}) {
   if (!looksLikeWav(wav)) return { ok: false, text: '', via: '', error: 'not a valid recording' }
   const chain = []
-  // 1) the speech model on this PC (Moonshine): private, free and the most accurate offline option
-  if (o.local) {
+  const useCloud = o.mode !== 'offline' && o.brain && o.brain.canTranscribe()
+  let localDone = false
+  const tryLocal = async () => {
+    localDone = true
+    if (!o.local) return null
     try {
       const r = await o.local(wav)
-      if (r && r.ok && r.text) return { ok: true, text: r.text, via: 'Moonshine (on this PC)', chain: ['local: ok'] }
+      if (r && r.ok && r.text) return { ok: true, text: r.text, via: 'Moonshine (on this PC)', chain: [...chain, 'local: ok'] }
       chain.push('local: ' + ((r && r.error) || 'heard nothing'))
     } catch (e) {
       chain.push('local: ' + (e && e.message))
     }
+    return null
   }
-  if (o.mode !== 'offline' && o.brain && o.brain.canTranscribe()) {
+  // private mode: only this PC. Otherwise the most accurate first: Groq Whisper (large model, audio goes to Groq), then the model on this PC.
+  if (!useCloud) {
+    const l = await tryLocal()
+    if (l) return l
+  }
+  if (useCloud) {
     const r = await o.brain.transcribe(wav)
     chain.push(...(r.chain || []))
     if (r.ok) return { ok: true, text: r.text, via: `Groq Whisper (${r.via})`, chain }
+  }
+  if (!localDone) {
+    const l = await tryLocal()
+    if (l) return l
   }
   let w = await winTranscribe(wav, o.phrases || [])
   // the command grammar is strict: when it hears nothing it can recognise, ask again with free dictation only

@@ -280,8 +280,8 @@ function menuTemplate() {
     {
       label: 'Speech recognition',
       submenu: [
-        { label: 'Automatic (Groq Whisper if you have a key, else Windows)', type: 'radio', checked: settings.sttMode === 'auto', click: () => update({ sttMode: 'auto' }) },
-        { label: 'Windows only (offline, audio never leaves this PC)', type: 'radio', checked: settings.sttMode === 'offline', click: () => update({ sttMode: 'offline' }) }
+        { label: 'Most accurate (Groq Whisper if you have a key, audio goes to Groq; otherwise this PC)', type: 'radio', checked: settings.sttMode === 'auto', click: () => update({ sttMode: 'auto' }) },
+        { label: 'Private (this PC only, audio never leaves it)', type: 'radio', checked: settings.sttMode === 'offline', click: () => update({ sttMode: 'offline' }) }
       ]
     },
     {

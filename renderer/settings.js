@@ -89,6 +89,26 @@
     $('dl-text').textContent = (p.phase === 'unpack' ? 'Checking and unpacking ' : 'Downloading ') + p.title + (p.count > 1 ? ' (' + p.index + ' of ' + p.count + ')' : '') + ' · ' + pct + '% · ' + mb(p.got) + ' of ' + mb(p.total)
   })
 
+  // ---- what the wake listener hears (text only, kept in this window, never saved)
+  const heardLog = []
+  window.jarvis.onWakeHeard((h) => {
+    heardLog.unshift(h)
+    heardLog.length = Math.min(heardLog.length, 8)
+    const line = $('heard')
+    if (line) {
+      line.textContent = '“' + h.text + '”'
+      line.dataset.hit = h.matched ? '1' : '0'
+      line.classList.remove('fade')
+      void line.offsetWidth
+      line.classList.add('fade')
+    }
+    const box = $('v-heard')
+    if (box) box.replaceChildren(...heardLog.map((x) => Object.assign(document.createElement('div'), { className: x.matched ? 'okline' : '', textContent: (x.matched ? '✓ woke: ' : '· ') + x.text })))
+  })
+  window.jarvis.onWakeCommand((text) => {
+    if (window.Assistant) void window.Assistant.handle(text, { voice: true })
+  })
+
   // ---- updates
   let nowVersion = ''
   function drawUpdate(u) {
@@ -131,6 +151,7 @@
   for (const k of ['micEcho', 'micNoise', 'micAgc']) $('v-' + k).addEventListener('change', (e) => window.jarvis.patchSettings({ [k]: e.target.checked }))
   $('v-sttauto').addEventListener('change', () => window.jarvis.patchSettings({ sttMode: 'auto' }))
   $('v-sttoff').addEventListener('change', () => window.jarvis.patchSettings({ sttMode: 'offline' }))
+  $('v-wakemode').addEventListener('change', (e) => window.jarvis.patchSettings({ wakeMode: e.target.value }))
   $('v-sens').addEventListener('change', (e) => window.jarvis.patchSettings({ wakeSensitivity: e.target.value }))
   $('v-light').addEventListener('change', (e) => window.jarvis.patchSettings({ sttLocal: e.target.checked ? 'light' : 'best' }))
   $('v-wakeWord').addEventListener('change', async (e) => {
@@ -152,9 +173,10 @@
     const s = await window.welcomeApi.state()
     if (!s) return
     const m = s.models
-    $('v-wakeWord').disabled = !m.wake
-    $('v-wakeWord').checked = !!s.wakeWord && !!m.wake
-    $('v-wakehint').textContent = m.wake ? '' : 'Needs the wake word model: use "Download voice models" below.'
+    const canWake = m.wake || m.stt || m.parakeet
+    $('v-wakeWord').disabled = !canWake
+    $('v-wakeWord').checked = !!s.wakeWord && !!canWake
+    $('v-wakehint').textContent = canWake ? '' : 'Needs the voice models: use "Download voice models" below.'
     $('v-dl').hidden = m.stt && m.voice && m.wake
     $('v-dlp').hidden = !!m.parakeet
     $('v-models').textContent = `On this PC: ${m.parakeet ? '✓ accurate model' : '✗ accurate model'}  ·  ${m.stt ? '✓ fast model' : '✗ fast model'}  ·  ${m.voice ? '✓ natural voice' : '✗ natural voice'}  ·  ${m.wake ? '✓ wake word' : '✗ wake word'}`
@@ -169,6 +191,7 @@
     $('v-sttoff').checked = cfg.sttMode === 'offline'
     $('v-light').checked = cfg.sttLocal === 'light'
     $('v-sens').value = cfg.wakeSensitivity || 'normal'
+    $('v-wakemode').value = cfg.wakeMode || 'smart'
   }
   window.jarvis.getSettings().then(apply)
   window.jarvis.onSettings(apply)

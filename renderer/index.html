@@ -24,6 +24,7 @@
         </div>
         <canvas id="orb" width="320" height="320" aria-hidden="true"></canvas>
         <p class="state" id="state" aria-hidden="true">STANDING BY</p>
+        <p class="heard" id="heard" aria-hidden="true"></p>
       </div>
       <canvas id="wave" height="34" aria-hidden="true"></canvas>
       <p class="caption" id="caption" role="status" aria-live="polite">Press Ctrl+Alt+Space and talk, or type below.</p>
@@ -90,7 +91,15 @@
           <h2>Wake word</h2>
           <label class="toggle"><input type="checkbox" id="v-wakeWord" /> <b>Say "Hey Jarvis" to wake him</b> <span>— listens for that phrase only, on this PC.</span></label>
           <p class="muted" id="v-wakehint"></p>
-          <label>How readily he wakes
+          <label>How he listens for "Hey Jarvis"
+            <select id="v-wakemode">
+              <option value="smart">Smart (recommended): the speech model also listens for his name, about 300 MB more memory</option>
+              <option value="light">Light: keyword spotter only</option>
+            </select>
+          </label>
+          <p class="muted">What he heard just now (words only, kept in this window):</p>
+          <div id="v-heard" class="muted heardlist">Say something near the microphone.</div>
+          <label>How readily the keyword spotter wakes him
             <select id="v-sens">
               <option value="low">Careful: fewest false wake-ups, may miss quiet speech</option>
               <option value="normal">Balanced (default)</option>
@@ -173,7 +182,8 @@
           <li><b>SambaNova</b>: DeepSeek V3.1, gpt-oss-120b. <button class="link" data-url="https://cloud.sambanova.ai/apis">Get a key ↗</button></li>
           <li><b>GitHub Models</b>: GPT-4.1 class, small daily limit. <button class="link" data-url="https://github.com/settings/personal-access-tokens/new">Get a token ↗</button></li>
         </ul>
-        <p class="muted">Already run <b>FreeLLMAPI</b> on this PC? Choose "FreeLLMAPI" below and paste its key: it pools many free providers behind one address.</p>
+        <p class="muted"><b>FreeLLMAPI</b> is a free program you run on this PC: you add your provider keys to it once and it pools their free tiers (about 30 services) behind one address, switching when one runs out. It does not create free quota by itself, it makes the keys you have last longer.</p>
+        <p><button id="fl-find">Look for FreeLLMAPI on this PC</button> <button class="link" data-url="https://github.com/tashfeenahmed/freellmapi">How to install it ↗</button> <span id="fl-msg" role="status"></span></p>
       </section>
 
       <section class="card">

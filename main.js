@@ -38,6 +38,7 @@ const DEFAULTS = {
   micEcho: true, // microphone clean-up Windows can do: echo cancellation (keeps Jarvis's own voice out of the recording)
   micNoise: false, // noise suppression (can chop quiet speech; off until the Voice Lab shows it helps)
   micAgc: true, // automatic gain (helps quiet or distant voices)
+  wakeMode: 'smart', // 'smart' = also listen with the speech model for "Jarvis" (finds it in speech the keyword spotter misses; about 300 MB more memory) | 'light' = keyword spotter only
   wakeSensitivity: 'normal', // 'low' | 'normal' | 'high': how readily "Hey Jarvis" wakes him (the Voice Lab picks one on your own voice)
   micDevice: '', // '' = the Windows default microphone
   sttLocal: 'best', // speech models on this PC: 'best' = Parakeet first (more memory), 'light' = Moonshine only
@@ -125,6 +126,7 @@ const publicSettings = () => ({
   micAgc: settings.micAgc,
   micDevice: settings.micDevice,
   wakeSensitivity: settings.wakeSensitivity,
+  wakeMode: settings.wakeMode,
   sttLocal: settings.sttLocal,
   morningBriefing: settings.morningBriefing
 })
@@ -202,6 +204,7 @@ function showWindow() {
 
 function applySettings() {
   if (!win) return
+  syncSmartWake()
   void audio.setWakePreset(['low', 'normal', 'high'].includes(settings.wakeSensitivity) ? settings.wakeSensitivity : 'normal').catch(() => {})
   syncWake()
   win.setAlwaysOnTop(settings.alwaysOnTop)
@@ -414,6 +417,7 @@ ipcMain.on('settings:patch', (e, patch) => {
   for (const [k, type] of Object.entries(PATCHABLE)) if (typeof patch[k] === type) clean[k] = patch[k]
   if (patch.sttMode === 'auto' || patch.sttMode === 'offline') clean.sttMode = patch.sttMode
   if (typeof patch.micDevice === 'string' && patch.micDevice.length <= 300) clean.micDevice = patch.micDevice
+  if (patch.wakeMode === 'smart' || patch.wakeMode === 'light') clean.wakeMode = patch.wakeMode
   if (['low', 'normal', 'high'].includes(patch.wakeSensitivity)) clean.wakeSensitivity = patch.wakeSensitivity
   if (patch.sttLocal === 'best' || patch.sttLocal === 'light') clean.sttLocal = patch.sttLocal
   if (patch.readMode === 'full' || patch.readMode === 'private') clean.readMode = patch.readMode
@@ -627,7 +631,7 @@ ipcMain.handle('welcome:state', (e) =>
 ipcMain.handle('welcome:models', (e, bundles) => (fromWelcome(e) && Array.isArray(bundles) ? offerModels(bundles.filter((b) => ['stt', 'stt-parakeet', 'voice', 'wake'].includes(b))) : { ok: false, message: 'not available' }))
 ipcMain.handle('welcome:wake', (e, on) => {
   if (!fromWelcome(e)) return { ok: false }
-  update({ wakeWord: !!on && audioModels.ready('wake') })
+  update({ wakeWord: !!on && (audioModels.ready('wake') || smartWakeAvailable()) })
   syncWake()
   return { ok: true }
 })
@@ -879,6 +883,20 @@ ipcMain.handle('brainwin:natural', (e, on) => {
   brainReady = { at: 0, v: false }
   return { ok: true }
 })
+// FreeLLMAPI (a router that pools many free provider tiers) is its own program; Jarvis only looks for it on this PC and connects to it as one more provider
+ipcMain.handle('brainwin:detect-freellm', async (e) => {
+  if (!fromBrainWin(e)) return { found: false }
+  for (const base of ['http://127.0.0.1:3001', 'http://127.0.0.1:31415']) {
+    try {
+      const r = await fetch(base + '/v1/models', { signal: AbortSignal.timeout(1500) })
+      // a running FreeLLMAPI answers 401 (needs its key) or 200; anything else on that port is not it
+      if (r.status === 401 || r.status === 200) return { found: true, url: base + '/v1' }
+    } catch {
+      /* nothing there */
+    }
+  }
+  return { found: false }
+})
 ipcMain.on('brainwin:link', (e, url) => {
   if (!fromBrainWin(e) || typeof url !== 'string') return
   try {
@@ -973,18 +991,35 @@ let micOpen = false // the window has the microphone open for a question
 let speaking = false
 let wakeResume = null
 const onWakeState = (s, detail) => win?.webContents.send('wake:state', { state: s, detail: detail || '' })
-const onWoke = () => {
+const onWoke = (keyword, extra) => {
   wake.pause() // he must not hear his own beep and answer
-  win?.webContents.send('voice:toggle')
+  const rest = extra && typeof extra.rest === 'string' ? extra.rest.trim() : ''
+  // "Hey Jarvis, what is the time": the smart listener already has the whole sentence, so no second listening step
+  if (rest.split(/s+/).filter(Boolean).length >= 2) win?.webContents.send('wake:command', rest.slice(0, 400))
+  else win?.webContents.send('voice:toggle')
 }
 const wakeLegacy = wakeWord.create({
   env: process.env.SPIDEY_TEST && process.env.SPIDEY_WAKE_WAV ? { SPIDEY_WAKE_WAV: process.env.SPIDEY_WAKE_WAV } : {},
   onWake: onWoke,
   onState: onWakeState
 })
-const wakeKws = require('./wake-kws').create({ audio, send: (channel, payload) => win?.webContents.send(channel, payload), onWake: onWoke, onState: onWakeState })
+const wakeKws = require('./wake-kws').create({ audio, send: (channel, payload) => win?.webContents.send(channel, payload), onWake: onWoke, onState: onWakeState, kwsOn: () => audioModels.ready('wake') })
+// the smart listener: speech model + voice-activity detection (wake-asr.js); runs next to the keyword spotter, either one wakes him
+const smartWake = require('./wake-asr').create({
+  transcribe: async (samples) => {
+    const model = audioModels.ready('stt') ? 'moonshine' : 'parakeet'
+    return (await audio.transcribe(samples, { model })).text
+  },
+  onHeard: (text, matched) => win?.webContents.send('wake:heard', { text: String(text).slice(0, 200), matched: !!matched }),
+  onWake: (rest, text) => wakeKws.trigger('SMART', { rest, text }),
+  onError: (e) => console.error('smart wake:', e && e.message)
+})
+const smartWakeAvailable = () => settings.wakeMode !== 'light' && (audioModels.ready('stt') || audioModels.ready('stt-parakeet')) && !(process.env.SPIDEY_TEST && !process.env.JARVIS_TEST_KWS)
+function syncSmartWake() {
+  wakeKws.setSmart(smartWakeAvailable() ? smartWake : null)
+}
 // the on-PC keyword spotter when its model is installed, otherwise the Windows speech recogniser (tests keep the old one unless asked)
-const useKws = () => audioModels.ready('wake') && !(process.env.SPIDEY_TEST && !process.env.JARVIS_TEST_KWS)
+const useKws = () => (audioModels.ready('wake') || smartWakeAvailable()) && !(process.env.SPIDEY_TEST && !process.env.JARVIS_TEST_KWS)
 let wakeImpl = wakeLegacy
 const wake = {
   start() {

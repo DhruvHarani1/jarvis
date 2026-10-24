@@ -12,7 +12,7 @@ const DEBOUNCE_MS = 2500
 /**
  * @param {{audio:{feedWake:(s:Float32Array)=>void, setWakeActive:(on:boolean)=>void, onWake:(cb:(k:string)=>void)=>void}, send:(channel:string, payload?:any)=>void, onWake:()=>void, onState?:(state:string, detail?:string)=>void, now?:()=>number}} o
  */
-function create({ audio, send, onWake, onState = () => {}, now = Date.now }) {
+function create({ audio, send, onWake, onState = () => {}, now = Date.now, kwsOn = () => true }) {
   let state = 'off' // off | starting | listening | paused | failed
   let lastWake = -Infinity
 
@@ -22,12 +22,15 @@ function create({ audio, send, onWake, onState = () => {}, now = Date.now }) {
     onState(s, detail)
   }
 
-  audio.onWake((keyword) => {
+  /** either detector (the keyword spotter or the smart listener) calls this; one "hey jarvis" often fires twice, so it is debounced */
+  function trigger(keyword, extra) {
     if (state !== 'listening') return
-    if (now() - lastWake < DEBOUNCE_MS) return // one "hey jarvis" often fires twice
+    if (now() - lastWake < DEBOUNCE_MS) return
     lastWake = now()
-    onWake(keyword)
-  })
+    onWake(keyword, extra)
+  }
+  audio.onWake((keyword) => trigger(keyword))
+  let smart = null // the smart listener (wake-asr.js), when switched on
 
   function start() {
     if (state === 'listening' || state === 'starting' || state === 'paused') return
@@ -42,6 +45,7 @@ function create({ audio, send, onWake, onState = () => {}, now = Date.now }) {
     set('off')
   }
   function pause() {
+    if (smart) smart.reset()
     if (state !== 'listening') return
     set('paused')
     send('wake:pause', true)
@@ -63,7 +67,8 @@ function create({ audio, send, onWake, onState = () => {}, now = Date.now }) {
   /** samples from the window */
   function pcm(samples) {
     if (state !== 'listening' || !(samples instanceof Float32Array) || samples.length === 0 || samples.length > 16000) return
-    audio.feedWake(samples)
+    if (kwsOn()) audio.feedWake(samples)
+    if (smart) smart.feed(samples)
   }
 
   return {
@@ -73,6 +78,8 @@ function create({ audio, send, onWake, onState = () => {}, now = Date.now }) {
     resume,
     mic,
     pcm,
+    trigger,
+    setSmart: (s) => (smart = s || null),
     get state() {
       return state
     }

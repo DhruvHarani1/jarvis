@@ -114,6 +114,24 @@
     const b = e.target.closest('button[data-url]')
     if (b) window.brainApi.openLink(b.dataset.url)
   })
+  $('fl-find').addEventListener('click', async () => {
+    const msg = $('fl-msg')
+    msg.className = ''
+    msg.textContent = 'Looking…'
+    const r = await window.brainApi.detectFreellm()
+    if (r && r.found) {
+      $('provider').value = 'freellmapi'
+      onProvider()
+      $('baseUrl').value = r.url
+      msg.className = 'ok'
+      msg.textContent = 'Found it at ' + r.url + '. Paste its unified key (the Keys page of its dashboard) in "Add a key" below and press Add key.'
+      $('key').scrollIntoView({ block: 'center' })
+      $('key').focus()
+    } else {
+      msg.className = 'err'
+      msg.textContent = 'Not running on this PC. Install and start it (button on the left), then look again.'
+    }
+  })
   $('smart').addEventListener('change', () => act(() => window.brainApi.smart($('smart').checked)))
   $('natural').addEventListener('change', () => act(() => window.brainApi.natural($('natural').checked)))
 

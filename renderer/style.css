@@ -119,3 +119,10 @@ body[data-dl='1'] .settings { top: 78px; }
 
 .recs { margin: 8px 0; padding-left: 18px; font-size: 13px; }
 .recs li { margin: 4px 0; }
+
+/* ---- what the wake listener just heard */
+.heard { margin: 6px 0 0; min-height: 16px; max-width: 90%; text-align: center; font: italic 12px var(--sans); color: var(--mute); opacity: 0; }
+.heard.fade { animation: heardfade 6s ease-out forwards; }
+.heard[data-hit='1'] { color: var(--ok); }
+@keyframes heardfade { 0% { opacity: 1; } 70% { opacity: 0.8; } 100% { opacity: 0; } }
+.heardlist { font-size: 12px; max-height: 120px; overflow: auto; }

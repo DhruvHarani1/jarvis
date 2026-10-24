@@ -533,7 +533,7 @@ function modelQuality(id) {
       if (s.badModels.has(model)) continue
       if (tried >= MAX_MODEL_TRIES) break
       tried++
-      const body = { model, messages, temperature: 0.35, max_tokens: tools ? 420 : 280, stream: !!onDelta }
+      const body = { model, messages, temperature: 0.35, max_tokens: tools ? 800 : 700, stream: !!onDelta }
       if (tools) Object.assign(body, { tools, tool_choice: 'auto' })
       const init = { method: 'POST', headers, body: JSON.stringify(body) }
       const r = onDelta ? await requestStream(`${base}/chat/completions`, init, onDelta, ONLINE_STREAM_MS, health.ttfbBudget(e.id)) : await request(`${base}/chat/completions`, init, ONLINE_TIMEOUT_MS)
@@ -565,7 +565,7 @@ function modelQuality(id) {
     if (!deps.ollama) return { ok: false, kind: 'network', message: 'local model unavailable' }
     const st = await deps.ollama.status().catch(() => ({ available: false }))
     if (!st.available) return { ok: false, kind: 'network', message: 'Ollama is not running or has no model' }
-    const lbody = { model: st.model, messages, temperature: 0.35, max_tokens: tools ? 420 : 220, stream: !!onDelta }
+    const lbody = { model: st.model, messages, temperature: 0.35, max_tokens: tools ? 500 : 300, stream: !!onDelta }
     if (tools) Object.assign(lbody, { tools })
     const init = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(lbody) }
     const r = onDelta ? await requestStream(`${OLLAMA_BASE}/chat/completions`, init, onDelta, LOCAL_TIMEOUT_MS) : await request(`${OLLAMA_BASE}/chat/completions`, init, LOCAL_TIMEOUT_MS)

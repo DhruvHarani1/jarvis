@@ -40,6 +40,8 @@ contextBridge.exposeInMainWorld('jarvis', {
   onVoiceToggle: on('voice:toggle'),
   onWakeState: on('wake:state'),
   onWakeEnable: on('wake:enable'),
+  onWakeHeard: on('wake:heard'),
+  onWakeCommand: on('wake:command'),
   onWakePause: on('wake:pause'),
   wakePcm: (samples) => ipcRenderer.send('wake:pcm', samples),
   wakeMic: (ev) => ipcRenderer.send('wake:mic', ev),
@@ -62,6 +64,7 @@ contextBridge.exposeInMainWorld('brainApi', {
   test: (id) => ipcRenderer.invoke('brainwin:test', id),
   natural: (on) => ipcRenderer.invoke('brainwin:natural', on),
   smart: (on) => ipcRenderer.invoke('brainwin:smart', on),
+  detectFreellm: () => ipcRenderer.invoke('brainwin:detect-freellm'),
   openLink: (url) => ipcRenderer.send('brainwin:link', url)
 })
 contextBridge.exposeInMainWorld('acctApi', {

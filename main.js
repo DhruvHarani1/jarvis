@@ -35,6 +35,7 @@ const DEFAULTS = {
   voiceConverse: false, // after he answers a spoken question, listen again for a follow-up
   wakeWord: false, // "Hey Jarvis": always listening for the wake phrase, fully offline
   screenVision: false, // "what is on my screen": sends a picture of the screen to your AI provider when you ask (asks every time)
+  sttLocal: 'best', // speech models on this PC: 'best' = Parakeet first (more memory), 'light' = Moonshine only
   morningBriefing: true, // greet with the day's briefing the first time Jarvis is up each morning (5 to 11 am)
   lastBriefing: '', // the day it was last given
   welcomed: false, // the first-run setup window has been shown
@@ -338,7 +339,9 @@ function menuTemplate() {
         click: (i) => update({ disabledTools: i.checked ? settings.disabledTools.filter((n) => n !== t.name) : [...new Set([...(settings.disabledTools || []), t.name])] })
       }))
     },
-    { label: 'Download voice models…', click: () => void offerModels(['stt', 'voice']) },
+    { label: 'Download voice models…', click: () => void offerModels(['stt', 'voice', 'wake']) },
+    { label: 'Download the accurate speech model (Parakeet, 480 MB)…', click: () => void offerModels(['stt-parakeet']) },
+    { label: 'Speech model on this PC: light (less memory) instead of the accurate one', type: 'checkbox', checked: settings.sttLocal === 'light', click: (i) => update({ sttLocal: i.checked ? 'light' : 'best' }) },
     { type: 'separator' },
     check('Notification inbox', 'inbox'),
     check('Read notifications aloud', 'readNotifications'),
@@ -885,14 +888,18 @@ ipcMain.on('brainwin:link', (e, url) => {
 const STT_PHRASES = stt.buildPhrases({})
 /** the speech model on this PC, when it is installed (tests use the fake provider path unless they ask for the real model) */
 function localStt() {
-  if (process.env.SPIDEY_TEST && !process.env.JARVIS_TEST_LOCAL_STT) return null
-  if (!audioModels.ready('stt')) return null
-  return async (wav) => {
+  if (process.env.SPIDEY_TEST && !process.env.JARVIS_TEST_LOCAL_STT) return []
+  const run = (model) => async (wav) => {
     const p = pcm.wavToFloat32(wav)
     if (!p) return { ok: false, error: 'unreadable recording' }
-    const r = await audio.transcribe(p.rate === 16000 ? p.samples : pcm.resample(p.samples, p.rate, 16000))
+    const r = await audio.transcribe(p.rate === 16000 ? p.samples : pcm.resample(p.samples, p.rate, 16000), { model })
     return { ok: true, text: r.text }
   }
+  const engines = []
+  // best first: Parakeet (accurate, about 1 GB of memory while it is loaded), then Moonshine (small); "light" skips Parakeet to save memory
+  if (settings.sttLocal !== 'light' && audioModels.ready('stt-parakeet')) engines.push({ name: 'Parakeet (on this PC)', run: run('parakeet') })
+  if (audioModels.ready('stt')) engines.push({ name: 'Moonshine (on this PC)', run: run('moonshine') })
+  return engines
 }
 ipcMain.handle('stt:transcribe', async (e, audio) => {
   if (e.sender !== win?.webContents) return { ok: false, text: '', error: 'not allowed' }
@@ -902,7 +909,7 @@ ipcMain.handle('stt:transcribe', async (e, audio) => {
   } catch {
     return { ok: false, text: '', error: 'bad audio' }
   }
-  const res = await stt.transcribe(buf, { brain, mode: settings.sttMode, phrases: STT_PHRASES, local: localStt() })
+  const res = await stt.transcribe(buf, { brain, mode: settings.sttMode, phrases: STT_PHRASES, locals: localStt() })
   if (process.env.JARVIS_DEBUG) console.log('[stt]', JSON.stringify({ via: res.via, chain: res.chain, text: res.text }))
   return res
 })

@@ -89,7 +89,7 @@ function create({ fork, workerPath, userDir, idleMs = 120_000, setTimer = setTim
   }
 
   /** @param {Float32Array} samples 16 kHz mono */
-  const transcribe = (samples) => request('stt', { samples })
+  const transcribe = (samples, opts = {}) => request('stt', { samples, model: opts.model, hotwords: opts.hotwords })
   const speak = (text, speed) => request('tts', { text, speed })
   const status = () => request('status')
   const unload = (what) => request('unload', { what })

@@ -122,35 +122,75 @@ function winTranscribe(wav, phrases = [], timeoutMs = 20_000) {
  * @param {{brain?:{canTranscribe:()=>boolean, transcribe:(b:Buffer)=>Promise<any>}, mode?:'auto'|'offline', local?:(wav:Buffer)=>Promise<{ok:boolean,text?:string,error?:string}>}} o
  * @returns {Promise<{ok:boolean, text:string, via:string, error?:string, chain?:string[]}>}
  */
+/** words recognisers invent out of silence or room noise */
+const HALLUCINATION = /^[\s.,!?-]*(thank you( so much| very much)?|thanks( for watching)?|you|bye( bye)?|okay|so|uh+|um+|hmm+|mm+|oh|the|i'm sorry|subtitles by .*|\[.*\]|\(.*\))[\s.,!?-]*$/i
+
+/** @returns {number} loudness 0..1 of a 16-bit mono WAV (rough RMS), 1 when it cannot tell */
+function wavLevel(wav) {
+  try {
+    const n = Math.floor((wav.length - 44) / 2)
+    if (n < 800) return 1
+    let sum = 0
+    const step = Math.max(1, Math.floor(n / 4000))
+    let c = 0
+    for (let i = 0; i < n; i += step) {
+      const v = wav.readInt16LE(44 + i * 2) / 32768
+      sum += v * v
+      c++
+    }
+    return Math.sqrt(sum / c)
+  } catch {
+    return 1
+  }
+}
+
+/** is this answer worth keeping? empty, only punctuation, or a stock phrase out of near-silence is not */
+function usable(text, level) {
+  const t = String(text || '').trim()
+  if (!t || !/[\p{L}\p{N}]/u.test(t)) return false
+  if (HALLUCINATION.test(t) && level < 0.02) return false
+  return true
+}
+
+/**
+ * Speech to text with fall-through: the first engine that gives a usable answer wins, a failing, empty or nonsense answer moves on.
+ *   accurate (default)  Groq Whisper, then each engine on this PC (best first), then Windows
+ *   offline (private)   each engine on this PC, then Windows; the cloud is never asked
+ * @param {Buffer} wav
+ * @param {{brain?:any, mode?:'auto'|'offline', local?:Function, locals?:{name:string, run:(wav:Buffer)=>Promise<{ok:boolean,text?:string,error?:string}>}[], phrases?:string[]}} o
+ */
 async function transcribe(wav, o = {}) {
   if (!looksLikeWav(wav)) return { ok: false, text: '', via: '', error: 'not a valid recording' }
   const chain = []
+  const level = wavLevel(wav)
   const useCloud = o.mode !== 'offline' && o.brain && o.brain.canTranscribe()
+  const locals = o.locals || (o.local ? [{ name: 'Moonshine (on this PC)', run: o.local }] : [])
   let localDone = false
-  const tryLocal = async () => {
+  const tryLocals = async () => {
     localDone = true
-    if (!o.local) return null
-    try {
-      const r = await o.local(wav)
-      if (r && r.ok && r.text) return { ok: true, text: r.text, via: 'Moonshine (on this PC)', chain: [...chain, 'local: ok'] }
-      chain.push('local: ' + ((r && r.error) || 'heard nothing'))
-    } catch (e) {
-      chain.push('local: ' + (e && e.message))
+    for (const eng of locals) {
+      try {
+        const r = await eng.run(wav)
+        if (r && r.ok && usable(r.text, level)) return { ok: true, text: r.text, via: eng.name, chain: [...chain, eng.name + ': ok'] }
+        chain.push(eng.name + ': ' + ((r && r.error) || (r && r.text ? 'that was not speech' : 'heard nothing')))
+      } catch (e) {
+        chain.push(eng.name + ': ' + ((e && e.message) || 'failed'))
+      }
     }
     return null
   }
-  // private mode: only this PC. Otherwise the most accurate first: Groq Whisper (large model, audio goes to Groq), then the model on this PC.
   if (!useCloud) {
-    const l = await tryLocal()
+    const l = await tryLocals()
     if (l) return l
   }
   if (useCloud) {
     const r = await o.brain.transcribe(wav)
     chain.push(...(r.chain || []))
-    if (r.ok) return { ok: true, text: r.text, via: `Groq Whisper (${r.via})`, chain }
+    if (r.ok && usable(r.text, level)) return { ok: true, text: r.text, via: `Groq Whisper (${r.via})`, chain }
+    if (r.ok) chain.push('Groq Whisper: that was not speech')
   }
   if (!localDone) {
-    const l = await tryLocal()
+    const l = await tryLocals()
     if (l) return l
   }
   let w = await winTranscribe(wav, o.phrases || [])
@@ -160,4 +200,4 @@ async function transcribe(wav, o = {}) {
   return { ok: false, text: '', via: '', error: w.error || 'could not recognize speech', chain: [...chain, `Windows: ${w.error}`] }
 }
 
-module.exports = { transcribe, winTranscribe, looksLikeWav, buildPhrases, NUMBER_WORDS, WIN_SCRIPT, MAX_WAV_BYTES, _setSpawn }
+module.exports = { usable, wavLevel, transcribe, winTranscribe, looksLikeWav, buildPhrases, NUMBER_WORDS, WIN_SCRIPT, MAX_WAV_BYTES, _setSpawn }

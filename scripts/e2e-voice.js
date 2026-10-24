@@ -103,8 +103,8 @@ async function connect(match) {
     }
     const b64 = await w.ev('((window.__voice.diag.find((d) => d.lastWavB64) || {}).lastWavB64) || ""')
     if (b64) fs.writeFileSync(path.join(root, 'scratch', 'e2e-last.wav'), Buffer.from(b64, 'base64'))
-    ok('Moonshine heard the fake microphone', !!heard && /cpu|weather/i.test(heard.heard || ''), JSON.stringify(heard))
-    ok('transcribed on this PC', !!heard && /Moonshine/.test(heard.via || ''), heard && heard.via)
+    ok('the speech model on this PC heard the fake microphone', !!heard && /cpu|weather/i.test(heard.heard || ''), JSON.stringify(heard))
+    ok('transcribed on this PC', !!heard && /on this PC/.test(heard.via || ''), heard && heard.via)
     let idle = false
     for (let i = 0; i < 120 && !idle; i++) {
       idle = (await w.ev('window.__ev.includes("idle")')) === true

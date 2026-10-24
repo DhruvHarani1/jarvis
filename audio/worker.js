@@ -33,7 +33,7 @@ port.on('message', (ev) => {
       if (m.userDir) models.setUserDir(m.userDir)
       return reply(m.id, { ok: true, pid: process.pid })
     }
-    if (m.op === 'stt') return reply(m.id, { ok: true, ...ensure().transcribe(f32(m.samples)) })
+    if (m.op === 'stt') return reply(m.id, { ok: true, ...ensure().transcribe(f32(m.samples), { model: m.model, hotwords: typeof m.hotwords === 'string' ? m.hotwords.slice(0, 600) : '' }) })
     if (m.op === 'tts') {
       const r = ensure().synth(m.text, { speed: m.speed })
       return reply(m.id, { ok: true, samples: r.samples, rate: r.rate, ms: r.ms })

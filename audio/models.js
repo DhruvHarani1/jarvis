@@ -29,6 +29,16 @@ const MANIFEST = {
     dir: 'sherpa-onnx-moonshine-base-en-quantized-2026-02-27',
     license: 'MIT'
   },
+  'stt-parakeet': {
+    title: 'Accurate speech recognition (NVIDIA Parakeet TDT 0.6B, English)',
+    why: 'much better at accents and names than the small model; runs on this PC (needs about 1 GB of memory while listening)',
+    kind: 'tar.bz2',
+    url: `${SHERPA}/asr-models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8.tar.bz2`,
+    sha256: '157c157bc51155e03e37d2466522a3a737dd9c72bb25f36eb18912964161e1ad',
+    bytes: 482468385,
+    dir: 'sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8',
+    license: 'CC-BY-4.0 (NVIDIA)'
+  },
   voice: {
     title: 'Voice (Piper "Alan", British English)',
     why: 'a natural voice for Jarvis, faster than real time on this PC',
@@ -74,6 +84,7 @@ const MANIFEST = {
 /** items that must exist together for a feature */
 const BUNDLES = {
   stt: ['stt'],
+  'stt-parakeet': ['stt-parakeet'],
   voice: ['voice', 'phonemizer', 'phonemizer-win-x64'],
   wake: ['wake']
 }

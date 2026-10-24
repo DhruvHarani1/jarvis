@@ -126,7 +126,7 @@ function create({ sherpa, models, requirePhonemizer, threads = 2, now = Date.now
       // the native library reads this file itself, so inside an installed app it must come from the unpacked copy, not from the asar archive
       keywordsFile: path.join(__dirname, 'keywords.txt').replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`),
       keywordsScore: 1.0,
-      keywordsThreshold: 0.25
+      keywordsThreshold: 0.05 // tuned on scripts/spikes/wake-sweep.js: boost 3.5, threshold 0.05 gave the best recall without false wakes
     })
     kwsStream = kws.createStream()
     return kws

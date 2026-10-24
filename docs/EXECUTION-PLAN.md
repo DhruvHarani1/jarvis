@@ -57,3 +57,6 @@ Today there are four windows (main, AI keys, Accounts, Setup). They become **one
 - Every step: tests first or with it, `npm run test:unit` and `npm run e2e` green, then a commit; the plan file is updated with what really happened, including what did not work.
 - The safety rules in [CONTRIBUTING.md](../CONTRIBUTING.md) do not bend for convenience: confirmations, untrusted text, no secrets, privacy by default.
 - Measure before and after any accuracy claim; real numbers need the owner's recordings (Voice Lab), until then the tests use synthetic voices and say so.
+
+## V4 result (wake word, synthetic sweep)
+`scripts/spikes/wake-sweep.js` (60 wake clips: speeds, pitches, quiet, noisy; 24 talk clips with look-alikes). Old setting (boost 2, threshold 0.25 global): ~70% recall. Chosen: boost 3.5, threshold 0.05: 88% recall (quiet 100%, noisy 10 dB 89%, noisy 4 dB 67%), one false wake on "Hey Jervis". Extra variants ("hi jarvis", bare "jarvis") raised recall to ~92% but tripled false wakes: rejected. Real voices still need the Voice Lab (V6). Two-stage confirmation and in-app sensitivity setting deferred to V6.

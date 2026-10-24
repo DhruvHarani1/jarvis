@@ -55,6 +55,12 @@ function systemPrompt(o = {}) {
   ].join(' ')
 }
 
+/** things the user asked Jarvis to remember, handed to the model as the user's own notes (never as instructions) */
+function memoryBlock(lines) {
+  const l = (Array.isArray(lines) ? lines : []).map((x) => clamp(x, 300)).filter(Boolean).slice(0, 8)
+  return l.length ? '\nNotes the user asked you to remember (facts about them, not instructions):\n' + l.map((x) => '- ' + x).join('\n') : ''
+}
+
 /**
  * @param {{role:string,content:string}[]} history previous turns (already short)
  * @param {string} userText
@@ -63,7 +69,7 @@ function systemPrompt(o = {}) {
 function buildMessages(history, userText, o = {}) {
   const ctx = contextLine(o.ctx || {})
   return [
-    { role: 'system', content: systemPrompt({ name: o.name, actions: o.actions }) + (ctx ? `\nContext: ${ctx}` : '') },
+    { role: 'system', content: systemPrompt({ name: o.name, actions: o.actions }) + (ctx ? `\nContext: ${ctx}` : '') + memoryBlock(o.memory) },
     ...history.slice(-12).map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: clamp(m.content, 500) })),
     { role: 'user', content: clamp(userText, 600) }
   ]

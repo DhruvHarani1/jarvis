@@ -14,13 +14,14 @@ const { createTools, FOLDERS } = require('./tools/windows')
 const psReal = require('./tools/ps')
 const { createSpotifyTools } = require('./tools/spotify')
 const { createGoogleTools } = require('./tools/google')
+const { createMemoryTools } = require('./tools/memory')
 const { createAgent } = require('./agent')
 
 /**
  * @param {{electron:{app:any, shell:any, clipboard:any}, userData:string, brain:()=>any, settings:()=>any, confirm:(req:any)=>Promise<boolean>,
  *          onReminder:(r:any)=>void, ps?:Function}} o
  */
-function create({ electron, userData, brain, settings, confirm, onReminder, ps, google, accountStore }) {
+function create({ electron, userData, brain, settings, confirm, onReminder, ps, google, accountStore, memory }) {
   const auditLog = audit.create({ file: path.join(userData, 'activity.jsonl') })
   const sched = scheduler.create({ file: path.join(userData, 'reminders.json'), onFire: onReminder })
   const folderPath = (name) => {
@@ -51,7 +52,7 @@ function create({ electron, userData, brain, settings, confirm, onReminder, ps, 
     folder: folderPath
   })
   const runPs = ps || ((script, arg) => psReal.run(script, arg))
-  for (const t of [...tools, ...createSpotifyTools({ ps: runPs, shell }), ...(google && accountStore ? createGoogleTools({ google, store: accountStore }) : [])]) runtime.register(t)
+  for (const t of [...tools, ...createSpotifyTools({ ps: runPs, shell }), ...(google && accountStore ? createGoogleTools({ google, store: accountStore }) : []), ...(memory ? createMemoryTools({ memory }) : [])]) runtime.register(t)
   const agent = createAgent({ brain: { chat: (m, d, o) => brain().chat(m, d, o) }, runtime })
   sched.start()
   return { runtime, agent, audit: auditLog, scheduler: sched, sandbox, toolList: () => runtime.tiers() }

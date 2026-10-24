@@ -11,6 +11,7 @@ const voiceOut = require('./voice-out')
 const appTools = require('./app-tools')
 const accountStoreMod = require('./accounts/store')
 const googleMod = require('./accounts/google')
+const memoryMod = require('./memory/store')
 const fastpath = require('./fastpath')
 const stt = require('./stt')
 const wakeWord = require('./wake')
@@ -239,6 +240,25 @@ async function offerModels(bundles) {
   buildTray()
 }
 
+/** write everything Jarvis remembers to a file the user can read, and show it */
+async function exportMemory() {
+  if (!memory) return
+  const f = path.join(app.getPath('userData'), 'jarvis-memory-export.json')
+  fs.writeFileSync(f, JSON.stringify(memory.exportAll(), null, 2))
+  shell.showItemInFolder(f)
+}
+
+async function forgetEverythingDialog() {
+  if (!memory) return
+  const n = memory.count()
+  const r = await dialog.showMessageBox(win, { type: 'warning', buttons: ['Forget everything', 'Cancel'], defaultId: 1, cancelId: 1, message: `Erase everything Jarvis remembers (${n} fact${n === 1 ? '' : 's'}) and the saved conversation?`, detail: 'This cannot be undone.' })
+  if (r.response === 0) {
+    memory.forgetAll()
+    brainHistory = []
+    conversationTainted = false
+  }
+}
+
 function menuTemplate() {
   const check = (label, key) => ({ label, type: 'checkbox', checked: !!settings[key], click: (i) => update({ [key]: i.checked }) })
   return [
@@ -267,6 +287,8 @@ function menuTemplate() {
     check('Jarvis can act on this PC (tools)', 'actions'),
     { label: 'Undo last action', click: () => void tools?.runtime.undo().then((r) => speech.speak(r.ok ? r.spoken : r.error, { queue: true })) },
     { label: 'Accounts: mail and calendar…', click: () => openAccounts() },
+    { label: 'Memory: export what I remember…', click: () => void exportMemory() },
+    { label: 'Memory: forget everything…', click: () => void forgetEverythingDialog() },
     { label: 'Activity log…', click: () => void shell.openPath(tools ? tools.audit.file : '') },
     {
       label: 'Tools',
@@ -464,10 +486,23 @@ ipcMain.on('acct:guide', (e, name) => {
   if (fs.existsSync(f)) void shell.openPath(f)
 })
 
+/** @type {ReturnType<typeof memoryMod.create> | null} */
+let memory = null
+function initMemory() {
+  try {
+    memory = memoryMod.create({ file: path.join(app.getPath('userData'), 'jarvis.db') })
+    brainHistory = memory.recentMessages() // pick the conversation up where it was left (anything older than 12 hours is dropped)
+  } catch (e) {
+    console.error('memory unavailable:', e && e.message)
+    memory = null
+  }
+}
+
 function initTools() {
   tools = appTools.create({
     google,
     accountStore,
+    memory,
     electron: { app, shell, clipboard },
     userData: app.getPath('userData'),
     brain: () => brain,
@@ -533,7 +568,7 @@ ipcMain.handle('brain:chat', async (e, text, ctx, opts) => {
   if (e.sender !== win?.webContents || !brain || typeof text !== 'string' || !text.trim()) return { ok: false, error: 'not available' }
   const speak = !!(opts && opts.speak === true)
   const useTools = !!tools && settings.actions !== false
-  const messages = brainPrompt.buildMessages(brainHistory, text, { name: settings.callMe, ctx: { now: new Date(), unread: Number.isFinite(ctx && ctx.unread) ? ctx.unread : undefined }, actions: useTools })
+  const messages = brainPrompt.buildMessages(brainHistory, text, { name: settings.callMe, ctx: { now: new Date(), unread: Number.isFinite(ctx && ctx.unread) ? ctx.unread : undefined }, actions: useTools, memory: memory ? memory.forPrompt(text) : [] })
   if (speak) speech.stop() // never talk over himself, or over you
   let said = ''
   const rs = brainPrompt.createReplyStream({
@@ -565,12 +600,17 @@ ipcMain.handle('brain:chat', async (e, text, ctx, opts) => {
   if (speak && !fin.streamed && fin.say) void speech.speak(fin.say, { queue: true })
   brainHistory.push({ role: 'user', content: text.slice(0, 600) }, { role: 'assistant', content: fin.say })
   brainHistory = brainHistory.slice(-24)
+  if (memory) {
+    memory.addMessage('user', text)
+    memory.addMessage('assistant', fin.say)
+  }
   return { ok: true, say: fin.say, via: r.via, spoken: speak }
 })
 ipcMain.on('brain:reset', (e) => {
   if (e.sender === win?.webContents) {
     brainHistory = []
     conversationTainted = false
+    memory?.clearMessages()
   }
 })
 ipcMain.on('accounts:open', (e) => {
@@ -842,6 +882,7 @@ if (!app.requestSingleInstanceLock()) {
     speech.setVoice(settings.voiceName)
     audio.onCrash((code) => console.error('audio worker crashed, exit', code))
     initBrain()
+    initMemory()
     initAccounts()
     initTools()
     const ours = (url) => typeof url === 'string' && url.startsWith('file://')
@@ -872,6 +913,11 @@ if (!app.requestSingleInstanceLock()) {
     globalShortcut.unregisterAll()
     stopInbox?.()
     updater.dispose()
+    try {
+      memory?.close()
+    } catch {
+      /* already closed */
+    }
     speech.stop()
     wake.stop()
     audio.stop()

@@ -405,6 +405,13 @@ Order by value for Dhruv: Spotify (URI + media keys), Calendar and Mail (OAuth o
 - SQLite schema + migrations, history, facts with FTS5, session summaries, memory commands, viewer/export, secret filter.
 - **Acceptance:** "Remember my sister's name is Asha" then, after an app restart, "what's my sister's name" answers correctly; "forget that" removes it; a string that looks like an API key is refused; memory survives updates; DB migration test from v1 to v2 schema.
 
+### M3 results (2026-10-24)
+
+Built: local SQLite memory (`memory/store.js`, built-in `node:sqlite`, FTS5 with English stemming, no embeddings), tools remember / recall / forget / forget_everything (the last one always asks), voice commands ("remember my sister is called Asha", "what do you remember", "forget that", "forget everything"), the notes go into the prompt as the user's facts (max 6 facts, 600 characters, only relevant or most used), the last 24 turns of the conversation survive a restart (anything older than 12 hours is dropped), tray: export what I remember (a JSON file) and forget everything.
+- **Secrets are refused** (API keys, tokens, private keys, passwords, long secret-looking values, valid card numbers), tags included.
+- **Memory poisoning defence:** a fact stored while untrusted text (a mail, the clipboard) was in the conversation is marked tainted: it is kept, shown only when asked for (and labelled), and never put into a prompt by itself.
+- Tests: 27 unit suites pass including memory (real SQLite, restart, migration, forget-all) and the tool, fast-path and prompt tests. The real app still boots and passes the tools end-to-end test. Not yet run: a memory-specific end-to-end test across an app restart (the store restart is unit-tested).
+
 ### M4: Free-LLM router and FreeLLMAPI option (2-3 sessions)
 
 - `router/` with catalog, ledger, cooldowns, TTFB timeouts, tool-call rescue, allowlist, privacy labels, usage view. `NOTICE` attribution.

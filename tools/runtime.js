@@ -92,7 +92,7 @@ function createRuntime({ audit, confirm, powerMode = () => false, disabled = () 
 
     let result
     try {
-      result = await tool.run(v.value, { source })
+      result = await tool.run(v.value, { source, tainted: !!ctx.tainted })
     } catch (e) {
       const error = String((e && e.message) || e)
       audit.log({ ...entry, decision, ok: false, error })

@@ -95,6 +95,14 @@ function parse(raw, o = {}) {
   if (/^(system status|how(?:'s| is) my (?:pc|computer|laptop|system)(?: doing)?|pc status|computer status|how(?:'s| is) the pc|battery|battery level|how much battery(?: do i have| is left)?|cpu usage)$/.test(t)) return { kind: 'tool', name: 'system_status', args: {} }
   if (/^(what(?:'s| are) my reminders|list (?:my )?reminders|list (?:my )?timers|show (?:my )?reminders)$/.test(t)) return { kind: 'tool', name: 'list_reminders', args: {} }
 
+  // memory (the original wording is kept, so names keep their capitals)
+  const said = String(raw || '').trim().replace(/^(?:hey |ok |okay )?jarvis[, ]+/i, '').replace(/^please /i, '').replace(/[?!]+$/, '')
+  if ((m = /^(?:remember|make a note|take a note|note down|note)(?: that| this| down that)?:? (.{3,300})$/i.exec(said)) && !/^(to |how |what |why |when |where )/i.test(m[1])) return { kind: 'tool', name: 'remember', args: { text: m[1].replace(/[.]+$/, '') } }
+  if (/^(?:what do you (?:remember|know about me)|what have i told you|what(?:'s| is) in your memory|list (?:your )?memor(?:y|ies))$/.test(t)) return { kind: 'tool', name: 'recall', args: {} }
+  if ((m = /^what do you (?:remember|know) about (.{2,80})$/.exec(t))) return { kind: 'tool', name: 'recall', args: { query: m[1] } }
+  if (/^(?:forget everything|forget all of it|erase (?:all )?(?:your )?memory|wipe (?:all )?(?:your )?memory|clear (?:your )?memory|delete (?:all )?(?:your )?memory)$/.test(t)) return { kind: 'tool', name: 'forget_everything', args: {} }
+  if ((m = /^forget (?:about )?(.{2,80})$/.exec(t)) && !/^(everything|all)/.test(m[1])) return { kind: 'tool', name: 'forget', args: { query: m[1] } }
+
   // mail and calendar (need a connected Google account; main says so when there is none)
   if (/^(check (?:my )?(?:e-?mails?|mail|inbox)|(?:any|do i have (?:any )?)(?: ?new| ?unread)? ?(?:e-?mails?|mail|messages)(?: today)?|(?:read )?my (?:unread )?(?:e-?mails?|mail|inbox)|unread (?:e-?mails?|mail)|what(?:'s| is) in my inbox|have i got (?:any )?(?:new )?(?:e-?mails?|mail))$/.test(t)) return { kind: 'tool', name: 'mail_unread', args: {} }
   if ((m = /^(?:what(?:'s| is| do i have)? (?:on )?(?:my )?(?:calendar|schedule|agenda)|what do i have|do i have any (?:meetings|events|appointments)|my (?:calendar|schedule|agenda)|(?:read|show) (?:me )?my (?:calendar|schedule|agenda)|any (?:meetings|events|appointments))(?: for)?(?: (today|tomorrow|this week|next seven days|next 7 days|the next week))?$/.exec(t))) {

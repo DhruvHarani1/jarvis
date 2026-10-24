@@ -110,4 +110,26 @@ assert.ok(a.every((v, i) => Math.abs(v - b[i]) < 1e-6), 'the main process and th
   assert.ok(feedAll(mk(), Array(140).fill(room)).includes('nospeech'))
 }
 
+// ---- Voice Lab helpers: word error rate and the microphone check
+{
+  assert.equal(VC.wer('what is my cpu', 'What is my CPU?'), 0)
+  assert.equal(VC.wer('open whatsapp', "open what's app"), 1)
+  assert.equal(VC.wer('send a message to mum', 'send message to mum'), 0.2)
+  assert.equal(VC.wer('', ''), 0)
+  assert.equal(VC.wer('hello', ''), 1)
+  const R = 16000
+  const room = (secs, amp) => Float32Array.from({ length: R * secs }, () => (Math.random() - 0.5) * amp)
+  const voice = (secs, amp) => Float32Array.from({ length: R * secs }, (_, i) => amp * Math.sin(i / 9) * (0.6 + 0.4 * Math.sin(i / 2000)))
+  const good = VC.analyzeMic(room(2, 0.004), voice(3, 0.3))
+  assert.equal(good.findings[0].level, 'ok', JSON.stringify(good.findings))
+  const quiet = VC.analyzeMic(room(2, 0.004), voice(3, 0.015))
+  assert.ok(quiet.findings.some((x) => /quiet/.test(x.text)), JSON.stringify(quiet.findings))
+  const dead = VC.analyzeMic(room(2, 0.004), room(3, 0.004))
+  assert.equal(dead.findings[0].level, 'bad')
+  const noisy = VC.analyzeMic(room(2, 0.2), voice(3, 0.3))
+  assert.ok(noisy.findings.some((x) => /noisy/.test(x.text)), JSON.stringify(noisy.findings))
+  const loud = voice(3, 1.2).map((v) => Math.max(-1, Math.min(1, v)))
+  assert.ok(VC.analyzeMic(room(2, 0.004), loud).findings.some((x) => /too loud/.test(x.text)))
+}
+
 console.log('capture: ALL PASS')

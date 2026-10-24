@@ -2,7 +2,7 @@
 
 A voice-first AI assistant for Windows. Say "Hey Jarvis", ask or command, hear a natural voice answer. He can open apps, control volume and music, set timers and reminders, read and send your mail, manage your calendar, message people on WhatsApp and Teams, remember things about you, and read your notifications aloud. Free, open source, and private by default: speech recognition, the wake word and the voice run on your own PC.
 
-> Status: version 0.2.0 (early, unsigned). Built by one developer with Claude. See [PLAN.md](PLAN.md) for the design and what is done, and [RESEARCH.md](RESEARCH.md) for why.
+> Status: version 0.3.0 (early, unsigned). Built by one developer with Claude. See [PLAN.md](PLAN.md) for the design and what is done, and [RESEARCH.md](RESEARCH.md) for why.
 
 ## Quick start
 

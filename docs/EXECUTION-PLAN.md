@@ -63,3 +63,10 @@ Today there are four windows (main, AI keys, Accounts, Setup). They become **one
 
 ## U1-U4 result (single window)
 One window now: canvas orb (idle, listening, thinking, speaking, awaiting your OK, error) with CPU/RAM readouts, caption, a conversation drawer and the input bar. Settings slide over it (gear button, Esc closes) with pages General, Voice, AI brain, Accounts, Setup. The three extra windows and their preloads are gone; one preload exposes the same masked APIs (no key, token or model path ever comes back). Window is 520x760. All e2e suites were pointed at the single window and pass; 35 unit suites pass. Still to do: U5 pages for Tools & permissions (Power mode, screen vision, per-tool switches), Memory & contacts, Activity log; V5 voice health; V6 Voice Lab; U6 polish.
+
+## V5, V6, U6 result
+- **Wake presets** (Careful / Balanced / Eager): the native spotter reads boost and threshold only from a keywords file (per-stream keyword strings are ignored, checked), so the engine keeps one spotter per preset. Synthetic check (`scripts/spikes/wake-presets.js`): Careful 71% recall, Balanced 90%, Eager 94%, 0 to 1 false wake in one minute of talk. Setting `wakeSensitivity`, shown in Settings → Voice; the worker is told again after a restart.
+- **Voice Lab** (Settings → Lab): microphone check (noise floor, level, clipping, plain-language findings), speech test (five phrases through every engine on this PC and Groq if on, scored by word error rate), wake test (your "Hey Jarvis" clips and ordinary talk scored on all three presets, one click applies the best). The real wake word is paused while the page is open. This is V5 (voice health) and V6 in one place.
+- **U6:** orb honours reduced motion, focus moves into the settings panel, Escape closes it.
+- Bugs found on the way: two regexes in the released 0.2.0 had lost their backslashes (phone masking on the Memory page).
+Not done: real-voice numbers (the Lab exists, the owner has to run it), Teams call controls, Microsoft sign-in, clean-machine install tests, code signing.

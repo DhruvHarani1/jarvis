@@ -7,17 +7,32 @@
  * outside (sherpa, the phonemizer, model folders) is injected, so the logic is unit-tested without any model.
  */
 const fs = require('node:fs')
+const os = require('node:os')
 const path = require('node:path')
 const { trimSilence, normalize } = require('./pcm')
 
 const SAMPLE_RATE = 16000
 const MAX_TTS_CHARS = 600
 
+// "Hey/Okay Jarvis" spelled the way the keyword model's vocabulary splits it. boost = how hard the phrase is pushed, threshold = how sure
+// the model must be. Chosen with scripts/spikes/wake-sweep.js; the Voice Lab picks one on the person's own voice.
+const WAKE_TOKENS = { HEY_JARVIS: '▁HE Y ▁JA R VI S', OKAY_JARVIS: '▁OKAY ▁JA R VI S' }
+const WAKE_PRESETS = {
+  low: { boost: 2.5, threshold: 0.15 }, // fewest false wake-ups, misses quiet or fast speech more
+  normal: { boost: 3.5, threshold: 0.05 },
+  high: { boost: 4.5, threshold: 0.02 } // catches the most, may wake on look-alikes
+}
+const wakeKeywords = (preset) => {
+  const p = WAKE_PRESETS[preset] || WAKE_PRESETS.normal
+  return Object.entries(WAKE_TOKENS).map(([name, t]) => `${t} :${p.boost} #${p.threshold} @${name}`).join(String.fromCharCode(10)) + String.fromCharCode(10)
+}
+
 function create({ sherpa, models, requirePhonemizer, threads = 2, now = Date.now }) {
   let tts = null
   let phon = null
   let kws = null
   let kwsStream = null
+  let wakePreset = 'normal'
 
   // ------------------------------------------------------------------ speech to text
   // two models: Moonshine (small, fast) and NVIDIA Parakeet (large, much more accurate, takes hotwords)
@@ -115,19 +130,29 @@ function create({ sherpa, models, requirePhonemizer, threads = 2, now = Date.now
   }
 
   // ------------------------------------------------------------------ wake word
-  function loadKws() {
-    if (kws) return kws
+  // one spotter per preset (the native library takes boost and threshold only from a keywords file, not per stream)
+  const spotters = {}
+  function spotter(preset) {
+    if (spotters[preset]) return spotters[preset]
     const dir = models.locate('wake')
     if (!dir) throw new Error('wake word model not installed')
     const f = (n) => path.join(dir, `${n}-epoch-12-avg-2-chunk-16-left-64.int8.onnx`)
-    kws = new sherpa.KeywordSpotter({
+    const kdir = path.join(os.tmpdir(), 'jarvis-wake-keywords')
+    fs.mkdirSync(kdir, { recursive: true })
+    const kfile = path.join(kdir, preset + '.txt')
+    fs.writeFileSync(kfile, wakeKeywords(preset))
+    spotters[preset] = new sherpa.KeywordSpotter({
       featConfig: { sampleRate: SAMPLE_RATE, featureDim: 80 },
       modelConfig: { transducer: { encoder: f('encoder'), decoder: f('decoder'), joiner: f('joiner') }, tokens: path.join(dir, 'tokens.txt'), numThreads: 1, provider: 'cpu' },
-      // the native library reads this file itself, so inside an installed app it must come from the unpacked copy, not from the asar archive
-      keywordsFile: path.join(__dirname, 'keywords.txt').replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`),
+      keywordsFile: kfile,
       keywordsScore: 1.0,
-      keywordsThreshold: 0.05 // tuned on scripts/spikes/wake-sweep.js: boost 3.5, threshold 0.05 gave the best recall without false wakes
+      keywordsThreshold: WAKE_PRESETS[preset].threshold
     })
+    return spotters[preset]
+  }
+  function loadKws() {
+    if (kws) return kws
+    kws = spotter(wakePreset)
     kwsStream = kws.createStream()
     return kws
   }
@@ -148,6 +173,39 @@ function create({ sherpa, models, requirePhonemizer, threads = 2, now = Date.now
   function resetWake() {
     if (kws) kwsStream = kws.createStream()
   }
+  /** 'low' | 'normal' | 'high' */
+  function setWakePreset(name) {
+    if (!WAKE_PRESETS[name]) return false
+    wakePreset = name
+    if (kws) {
+      kws = spotter(name)
+      kwsStream = kws.createStream()
+    }
+    return true
+  }
+  /** how many times each preset would have woken on this recording (16 kHz mono) */
+  function wakeTest(samples) {
+    const out = {}
+    for (const name of Object.keys(WAKE_PRESETS)) {
+      const k = spotter(name)
+      const st = k.createStream()
+      let n = 0
+      const pump = () => {
+        while (k.isReady(st)) {
+          k.decode(st)
+          if (k.getResult(st).keyword) n++
+        }
+      }
+      for (let i = 0; i < samples.length; i += 1600) {
+        st.acceptWaveform({ sampleRate: SAMPLE_RATE, samples: samples.subarray(i, i + 1600) })
+        pump()
+      }
+      st.acceptWaveform({ sampleRate: SAMPLE_RATE, samples: new Float32Array(8000) }) // let the last word finish
+      pump()
+      out[name] = n
+    }
+    return out
+  }
 
   function unload(what = 'all') {
     if (what === 'all' || what === 'stt') for (const k of Object.keys(recognizers)) delete recognizers[k]
@@ -158,11 +216,12 @@ function create({ sherpa, models, requirePhonemizer, threads = 2, now = Date.now
     if (what === 'all' || what === 'wake') {
       kws = null
       kwsStream = null
+      for (const k of Object.keys(spotters)) delete spotters[k]
     }
   }
   const loaded = () => ({ stt: !!recognizers.moonshine, parakeet: !!recognizers.parakeet, tts: !!tts, wake: !!kws })
 
-  return { transcribe, synth, feedWake, resetWake, unload, loaded, SAMPLE_RATE }
+  return { transcribe, synth, feedWake, resetWake, setWakePreset, wakeTest, unload, loaded, SAMPLE_RATE }
 }
 
-module.exports = { create, SAMPLE_RATE, MAX_TTS_CHARS }
+module.exports = { create, SAMPLE_RATE, MAX_TTS_CHARS, WAKE_PRESETS, wakeKeywords }

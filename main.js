@@ -38,6 +38,7 @@ const DEFAULTS = {
   micEcho: true, // microphone clean-up Windows can do: echo cancellation (keeps Jarvis's own voice out of the recording)
   micNoise: false, // noise suppression (can chop quiet speech; off until the Voice Lab shows it helps)
   micAgc: true, // automatic gain (helps quiet or distant voices)
+  wakeSensitivity: 'normal', // 'low' | 'normal' | 'high': how readily "Hey Jarvis" wakes him (the Voice Lab picks one on your own voice)
   micDevice: '', // '' = the Windows default microphone
   sttLocal: 'best', // speech models on this PC: 'best' = Parakeet first (more memory), 'light' = Moonshine only
   morningBriefing: true, // greet with the day's briefing the first time Jarvis is up each morning (5 to 11 am)
@@ -123,6 +124,7 @@ const publicSettings = () => ({
   micNoise: settings.micNoise,
   micAgc: settings.micAgc,
   micDevice: settings.micDevice,
+  wakeSensitivity: settings.wakeSensitivity,
   sttLocal: settings.sttLocal,
   morningBriefing: settings.morningBriefing
 })
@@ -199,6 +201,7 @@ function showWindow() {
 
 function applySettings() {
   if (!win) return
+  void audio.setWakePreset(['low', 'normal', 'high'].includes(settings.wakeSensitivity) ? settings.wakeSensitivity : 'normal').catch(() => {})
   syncWake()
   win.setAlwaysOnTop(settings.alwaysOnTop)
   syncLoginItem(settings.startup)
@@ -397,6 +400,7 @@ ipcMain.on('settings:patch', (e, patch) => {
   for (const [k, type] of Object.entries(PATCHABLE)) if (typeof patch[k] === type) clean[k] = patch[k]
   if (patch.sttMode === 'auto' || patch.sttMode === 'offline') clean.sttMode = patch.sttMode
   if (typeof patch.micDevice === 'string' && patch.micDevice.length <= 300) clean.micDevice = patch.micDevice
+  if (['low', 'normal', 'high'].includes(patch.wakeSensitivity)) clean.wakeSensitivity = patch.wakeSensitivity
   if (patch.sttLocal === 'best' || patch.sttLocal === 'light') clean.sttLocal = patch.sttLocal
   if (patch.readMode === 'full' || patch.readMode === 'private') clean.readMode = patch.readMode
   if (typeof patch.callMe === 'string') clean.callMe = patch.callMe.replace(/[^\p{L}\p{N} .'-]/gu, '').trim().slice(0, 40)
@@ -406,7 +410,7 @@ ipcMain.on('settings:patch', (e, patch) => {
   if (Object.keys(clean).length) update(clean)
 })
 const fromMain = (e) => e.sender === win?.webContents
-const maskPhone = (p) => (p ? String(p).replace(/d(?=d{3})/g, '•') : '')
+const maskPhone = (p) => (p ? String(p).replace(/\d(?=\d{3})/g,'•') : '')
 const toolsState = () => ({
   actions: settings.actions !== false,
   screenVision: !!settings.screenVision,
@@ -900,6 +904,54 @@ ipcMain.handle('stt:transcribe', async (e, audio) => {
   const res = await stt.transcribe(buf, { brain, mode: settings.sttMode, phrases: STT_PHRASES, locals: localStt() })
   if (process.env.JARVIS_DEBUG) console.log('[stt]', JSON.stringify({ via: res.via, chain: res.chain, text: res.text }))
   return res
+})
+// ---- Voice Lab: the page records you, these run the same recording through every engine and every wake setting
+ipcMain.handle('lab:speech', async (e, audio) => {
+  if (e.sender !== win?.webContents) return []
+  let buf
+  try {
+    buf = Buffer.from(audio instanceof ArrayBuffer ? new Uint8Array(audio) : audio)
+  } catch {
+    return []
+  }
+  if (!stt.looksLikeWav(buf)) return []
+  const rows = []
+  for (const eng of localStt()) {
+    const t0 = Date.now()
+    try {
+      const r = await eng.run(buf)
+      rows.push({ name: eng.name, text: r.ok ? r.text : '', error: r.ok ? '' : r.error, ms: Date.now() - t0 })
+    } catch (err) {
+      rows.push({ name: eng.name, text: '', error: String((err && err.message) || err).slice(0, 120), ms: Date.now() - t0 })
+    }
+  }
+  if (settings.sttMode !== 'offline' && brain && brain.canTranscribe()) {
+    const t0 = Date.now()
+    const r = await brain.transcribe(buf)
+    rows.push({ name: 'Groq Whisper (online)', text: r.ok ? r.text : '', error: r.ok ? '' : String(r.error || 'failed').slice(0, 120), ms: Date.now() - t0 })
+  }
+  return rows
+})
+let labPaused = false
+ipcMain.on('lab:busy', (e, on) => {
+  if (e.sender !== win?.webContents) return
+  if (on && !labPaused) {
+    labPaused = true
+    wake.pause()
+  } else if (!on && labPaused) {
+    labPaused = false
+    wake.resume()
+  }
+})
+ipcMain.handle('lab:wake', async (e, samples) => {
+  if (e.sender !== win?.webContents || !(samples instanceof Float32Array) || samples.length < 1600 || samples.length > 16000 * 12) return { ok: false }
+  if (!audioModels.ready('wake')) return { ok: false, error: 'the wake word model is not installed' }
+  try {
+    const r = await audio.wakeTest(samples)
+    return { ok: true, hits: r.hits }
+  } catch (err) {
+    return { ok: false, error: String((err && err.message) || err).slice(0, 120) }
+  }
 })
 ipcMain.handle('voice:info', (e) => (e.sender === win?.webContents ? { cloud: !!brain && brain.canTranscribe(), mode: settings.sttMode, converse: settings.voiceConverse } : null))
 

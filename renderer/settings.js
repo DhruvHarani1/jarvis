@@ -8,7 +8,7 @@
   if (typeof window === 'undefined' || !window.jarvis) return
   const $ = (id) => document.getElementById(id)
   const panel = $('settings')
-  const PAGES = ['general', 'voice', 'brain', 'accounts', 'tools', 'memory', 'activity', 'setup']
+  const PAGES = ['general', 'voice', 'lab', 'brain', 'accounts', 'tools', 'memory', 'activity', 'setup']
   let current = ''
 
   function show(page) {
@@ -16,15 +16,19 @@
       current = ''
       panel.hidden = true
       document.body.dataset.settings = '0'
+      if (panel.contains(document.activeElement)) $('input').focus()
       document.dispatchEvent(new CustomEvent('settings-page', { detail: '' }))
       return
     }
+    const opening = panel.hidden
     current = page
     panel.hidden = false
     document.body.dataset.settings = '1'
     for (const p of PAGES) $('page-' + p).hidden = p !== page
     for (const b of panel.querySelectorAll('[data-go]')) b.setAttribute('aria-current', b.dataset.go === page ? 'page' : 'false')
     document.dispatchEvent(new CustomEvent('settings-page', { detail: page }))
+    const cur = panel.querySelector('[data-go][aria-current="page"]')
+    if (cur && opening) cur.focus() // keyboard users land in the panel
   }
 
   $('setbtn').addEventListener('click', () => (current ? show('') : show('general')))
@@ -76,6 +80,7 @@
   for (const k of ['micEcho', 'micNoise', 'micAgc']) $('v-' + k).addEventListener('change', (e) => window.jarvis.patchSettings({ [k]: e.target.checked }))
   $('v-sttauto').addEventListener('change', () => window.jarvis.patchSettings({ sttMode: 'auto' }))
   $('v-sttoff').addEventListener('change', () => window.jarvis.patchSettings({ sttMode: 'offline' }))
+  $('v-sens').addEventListener('change', (e) => window.jarvis.patchSettings({ wakeSensitivity: e.target.value }))
   $('v-light').addEventListener('change', (e) => window.jarvis.patchSettings({ sttLocal: e.target.checked ? 'light' : 'best' }))
   $('v-wakeWord').addEventListener('change', async (e) => {
     await window.welcomeApi.setWake(e.target.checked)
@@ -112,6 +117,7 @@
     $('v-sttauto').checked = cfg.sttMode !== 'offline'
     $('v-sttoff').checked = cfg.sttMode === 'offline'
     $('v-light').checked = cfg.sttLocal === 'light'
+    $('v-sens').value = cfg.wakeSensitivity || 'normal'
   }
   window.jarvis.getSettings().then(apply)
   window.jarvis.onSettings(apply)

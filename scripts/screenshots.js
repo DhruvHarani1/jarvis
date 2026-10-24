@@ -56,7 +56,7 @@ const shot = async (p, name) => {
     await main.ev('document.body.dataset.voice = "idle"; document.getElementById("drawerbtn").click()')
     await sleep(500)
     await shot(main, 'main-conversation')
-    for (const p of ['general', 'voice', 'brain', 'accounts', 'setup']) {
+    for (const p of ['general', 'voice', 'lab', 'brain', 'accounts', 'setup']) {
       await main.ev('document.dispatchEvent(new CustomEvent("settings-open", { detail: "' + p + '" }))')
       await sleep(900)
       await shot(main, 'settings-' + p)

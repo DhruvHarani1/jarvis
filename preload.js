@@ -88,5 +88,8 @@ contextBridge.exposeInMainWorld('manageApi', {
   memoryForgetAll: () => ipcRenderer.invoke('memory:forget-all'),
   activity: () => ipcRenderer.invoke('activity:recent'),
   activityOpen: () => ipcRenderer.send('activity:open'),
-  briefingNow: () => ipcRenderer.send('briefing:now')
+  briefingNow: () => ipcRenderer.send('briefing:now'),
+  labSpeech: (wav) => ipcRenderer.invoke('lab:speech', wav),
+  labBusy: (on) => ipcRenderer.send('lab:busy', !!on),
+  labWake: (samples) => ipcRenderer.invoke('lab:wake', samples)
 })

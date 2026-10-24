@@ -14,6 +14,7 @@ function create({ fork, workerPath, userDir, idleMs = 120_000, setTimer = setTim
   let nextId = 1
   const pending = new Map()
   let wakeActive = false
+  let wakePreset = 'normal' // remembered so a restarted worker gets it again
   let idleTimer = null
   let onWake = () => {}
   let onCrash = () => {}
@@ -47,6 +48,7 @@ function create({ fork, workerPath, userDir, idleMs = 120_000, setTimer = setTim
       if (code) onCrash(code)
     })
     send(c, { id: nextId++, op: 'init', userDir: typeof userDir === 'function' ? userDir() : userDir })
+    if (wakePreset !== 'normal') send(c, { id: nextId++, op: 'wake-preset', name: wakePreset })
     return c
   }
 
@@ -93,6 +95,11 @@ function create({ fork, workerPath, userDir, idleMs = 120_000, setTimer = setTim
   const speak = (text, speed) => request('tts', { text, speed })
   const status = () => request('status')
   const unload = (what) => request('unload', { what })
+  const setWakePreset = (name) => {
+    wakePreset = name
+    return child ? request('wake-preset', { name }) : Promise.resolve({ ok: true })
+  }
+  const wakeTest = (samples) => request('wake-test', { samples })
 
   /** microphone samples for the always-on wake word; fire and forget */
   function feedWake(samples) {
@@ -127,6 +134,8 @@ function create({ fork, workerPath, userDir, idleMs = 120_000, setTimer = setTim
     speak,
     status,
     unload,
+    setWakePreset,
+    wakeTest,
     feedWake,
     setWakeActive,
     stop,

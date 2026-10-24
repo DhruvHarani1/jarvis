@@ -95,3 +95,18 @@ body[data-wake='1'] .stage::after { content: 'WAKE WORD ON'; position: absolute;
 .pages .key { grid-template-columns: 28px 1fr; }
 .pages .key .b { grid-column: 1 / -1; grid-row: auto; justify-content: flex-start; }
 .pages .key .s { grid-column: 1 / -1; }
+
+/* ---- Voice Lab */
+.meterline { position: sticky; top: 0; z-index: 2; margin: 0 0 4px; padding: 3px 8px; background: rgba(2, 8, 18, 0.95); border-bottom: 1px solid var(--line); font: 12px var(--mono); color: var(--accent); min-height: 22px; overflow: hidden; white-space: nowrap; }
+.lab-row { display: grid; grid-template-columns: 1fr auto; gap: 6px 10px; align-items: center; }
+.lab-row .s { grid-column: 1 / -1; font: 12px var(--mono); }
+.finding { margin: 6px 0; }
+.finding.ok { color: var(--ok); }
+.finding.warn { color: var(--gold); }
+.finding.bad { color: #ff9aae; }
+.okline { color: var(--ok); }
+.midline { color: var(--gold); }
+.badline { color: #ff9aae; }
+.best { color: var(--ok); font-weight: 600; }
+
+@media (prefers-reduced-motion: reduce) { * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }

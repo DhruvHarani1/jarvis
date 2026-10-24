@@ -14,6 +14,7 @@
   const CY = canvas.height / 2
   const NAMES = { idle: 'STANDING BY', listening: 'LISTENING', heard: 'LISTENING', thinking: 'THINKING', speaking: 'SPEAKING', asking: 'AWAITING YOUR OK', error: 'SOMETHING WENT WRONG' }
   const TONE = { idle: [56, 200, 255], listening: [90, 235, 255], thinking: [255, 207, 92], speaking: [120, 220, 255], asking: [255, 207, 92], error: [255, 77, 109] }
+  const calm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches // slower, gentler motion for people who ask Windows for it
   let t = 0
   let shown = ''
   let energy = 0 // smoothed 0..1, what the rings follow
@@ -32,7 +33,7 @@
   }
 
   function frame() {
-    t += 0.016
+    t += calm ? 0.004 : 0.016
     const st = stateNow()
     if (st !== shown) {
       shown = st

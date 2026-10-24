@@ -172,5 +172,56 @@
     }
   }
 
-  return { resample, createResampler, encodeWav, rms, createVad, TARGET_RATE }
+  /** word error rate of what was heard against what was said: 0 = perfect, 1 = every word wrong (can pass 1 when extra words come in) */
+  function wer(said, heard) {
+    const words = (t) => String(t || '').toLowerCase().replace(/[^\p{L}\p{N}' ]/gu, ' ').split(/\s+/).filter(Boolean)
+    const a = words(said)
+    const b = words(heard)
+    if (!a.length) return b.length ? 1 : 0
+    let prev = Array.from({ length: b.length + 1 }, (_, j) => j)
+    for (let i = 1; i <= a.length; i++) {
+      const cur = [i]
+      for (let j = 1; j <= b.length; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1))
+      prev = cur
+    }
+    return prev[b.length] / a.length
+  }
+
+  /**
+   * What the microphone is doing, from 16 kHz samples of a quiet spell (silence) and of the person talking (speech).
+   * Returns the numbers and plain-language findings: [{level:'ok'|'warn'|'bad', text}].
+   */
+  function analyzeMic(silence, speech) {
+    const win = 800 // 50 ms
+    const levels = (x) => {
+      const out = []
+      for (let i = 0; i + win <= x.length; i += win) out.push(rms(x.subarray(i, i + win)))
+      return out.sort((p, q) => p - q)
+    }
+    const pct = (arr, p) => (arr.length ? arr[Math.min(arr.length - 1, Math.floor(arr.length * p))] : 0)
+    const db = (v) => 20 * Math.log10(Math.max(v, 1e-5))
+    const noise = pct(levels(silence), 0.5)
+    const talk = pct(levels(speech), 0.9)
+    let peak = 0
+    let clipped = 0
+    for (const v of speech) {
+      const m = Math.abs(v)
+      if (m > peak) peak = m
+      if (m >= 0.98) clipped++
+    }
+    const clipPct = speech.length ? (clipped / speech.length) * 100 : 0
+    const snr = db(talk) - db(noise)
+    const f = []
+    if (talk < 2 * Math.max(noise, 0.002) || talk < 0.004) f.push({ level: 'bad', text: 'I could barely hear you. Check the right microphone is chosen and not muted (Windows Settings → System → Sound → Input).' })
+    else {
+      if (talk < 0.02) f.push({ level: 'warn', text: 'Your voice is quiet. Raise the input volume in Windows sound settings, or move closer. Jarvis lifts quiet voices, but a louder signal is cleaner.' })
+      if (snr < 12) f.push({ level: 'warn', text: 'The room is noisy compared with your voice (' + snr.toFixed(0) + ' dB apart). Move closer to the microphone, use a headset, or turn off a fan or TV.' })
+      if (clipPct > 0.3) f.push({ level: 'warn', text: 'Your voice is too loud for the microphone and gets cut off. Lower the input volume in Windows sound settings.' })
+    }
+    if (noise > 0.03) f.push({ level: 'warn', text: 'The background is loud even when you are silent.' })
+    if (!f.length) f.push({ level: 'ok', text: 'The microphone sounds good: clear voice (' + snr.toFixed(0) + ' dB above the room), no cutting off.' })
+    return { noise, talk, peak, clipPct, snr, findings: f }
+  }
+
+  return { resample, createResampler, encodeWav, rms, createVad, wer, analyzeMic, TARGET_RATE }
 })

@@ -44,6 +44,8 @@ port.on('message', (ev) => {
       return
     }
     if (m.op === 'wake-reset') return ensure().resetWake()
+    if (m.op === 'wake-preset') return reply(m.id, { ok: ensure().setWakePreset(m.name) })
+    if (m.op === 'wake-test') return reply(m.id, { ok: true, hits: ensure().wakeTest(f32(m.samples)) })
     if (m.op === 'unload') {
       ensure().unload(m.what)
       return reply(m.id, { ok: true })
